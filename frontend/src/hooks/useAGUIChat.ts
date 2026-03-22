@@ -1,0 +1,231 @@
+import { useState, useCallback, useRef } from 'react'
+import {
+  ChatMessage,
+  RunAgentInput,
+  AGUIEvent,
+  ToolSnapshot,
+} from '../types'
+
+const AGUI_ENDPOINT = '/agui/run'
+
+function generateId() {
+  return Math.random().toString(36).slice(2, 10)
+}
+
+export function useAGUIChat() {
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [isRunning, setIsRunning] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const threadIdRef = useRef<string>(generateId())
+  const abortRef = useRef<AbortController | null>(null)
+
+  // 메시지 단건 업데이트 헬퍼
+  const updateMessage = useCallback((id: string, updater: (m: ChatMessage) => ChatMessage) => {
+    setMessages(prev => prev.map(m => m.id === id ? updater(m) : m))
+  }, [])
+
+  const sendMessage = useCallback(async (userText: string) => {
+    if (isRunning || !userText.trim()) return
+    setError(null)
+    setIsRunning(true)
+
+    // 1. 사용자 메시지 추가
+    const userMsg: ChatMessage = {
+      id: generateId(),
+      role: 'user',
+      content: userText.trim(),
+      status: 'done',
+      toolCalls: [],
+      snapshots: [],
+      timestamp: new Date(),
+    }
+    setMessages(prev => [...prev, userMsg])
+
+    // 2. 어시스턴트 메시지 placeholder
+    const assistantId = generateId()
+    const assistantMsg: ChatMessage = {
+      id: assistantId,
+      role: 'assistant',
+      content: '',
+      status: 'streaming',
+      toolCalls: [],
+      snapshots: [],
+      timestamp: new Date(),
+    }
+    setMessages(prev => [...prev, assistantMsg])
+
+    // 3. history 구성 (현재 메시지 포함)
+    const history = messages
+      .filter(m => m.status === 'done')
+      .map(m => ({ role: m.role, content: m.content }))
+    history.push({ role: 'user', content: userText.trim() })
+
+    // 4. RunAgentInput 구성
+    const runId = generateId()
+    const input: RunAgentInput = {
+      threadId: threadIdRef.current,
+      runId,
+      state: {},
+      messages: history,
+      tools: [],
+      context: [],
+      forwardedProps: {},
+    }
+
+    const abort = new AbortController()
+    abortRef.current = abort
+
+    try {
+      const res = await fetch(AGUI_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+        signal: abort.signal,
+      })
+
+      if (!res.ok || !res.body) {
+        throw new Error(`서버 오류: ${res.status}`)
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      // 진행 중인 tool call args 버퍼
+      const toolArgsBuffer: Record<string, string> = {}
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6).trim()
+          if (!raw) continue
+
+          let event: AGUIEvent
+          try {
+            event = JSON.parse(raw)
+          } catch {
+            continue
+          }
+
+          handleEvent(event, assistantId, toolArgsBuffer, updateMessage)
+        }
+      }
+
+      // 스트림 종료 → done
+      updateMessage(assistantId, m => ({ ...m, status: 'done', currentStep: undefined }))
+    } catch (err: unknown) {
+      if ((err as Error).name === 'AbortError') return
+      const msg = err instanceof Error ? err.message : '알 수 없는 오류'
+      setError(msg)
+      updateMessage(assistantId, m => ({ ...m, status: 'error', content: m.content || msg }))
+    } finally {
+      setIsRunning(false)
+    }
+  }, [isRunning, messages, updateMessage])
+
+  const stopStreaming = useCallback(() => {
+    abortRef.current?.abort()
+    setIsRunning(false)
+  }, [])
+
+  const clearMessages = useCallback(() => {
+    threadIdRef.current = generateId()
+    setMessages([])
+    setError(null)
+  }, [])
+
+  return { messages, isRunning, error, sendMessage, stopStreaming, clearMessages }
+}
+
+// ─────────────────────────────────────────────
+// AG-UI 이벤트 → 상태 업데이트
+// ─────────────────────────────────────────────
+function handleEvent(
+  event: AGUIEvent,
+  assistantId: string,
+  toolArgsBuffer: Record<string, string>,
+  updateMessage: (id: string, fn: (m: ChatMessage) => ChatMessage) => void,
+) {
+  switch (event.type) {
+    case 'TEXT_MESSAGE_CHUNK': {
+      const delta = event.delta as string
+      if (!delta) break
+      updateMessage(assistantId, m => ({ ...m, content: m.content + delta }))
+      break
+    }
+
+    case 'TOOL_CALL_START': {
+      const tc = {
+        id: event.toolCallId as string,
+        name: event.toolCallName as string,
+        args: '',
+        done: false,
+      }
+      updateMessage(assistantId, m => ({
+        ...m,
+        toolCalls: [...m.toolCalls, tc],
+      }))
+      toolArgsBuffer[tc.id] = ''
+      break
+    }
+
+    case 'TOOL_CALL_ARGS': {
+      const tcId = event.toolCallId as string
+      toolArgsBuffer[tcId] = (toolArgsBuffer[tcId] ?? '') + (event.delta as string)
+      updateMessage(assistantId, m => ({
+        ...m,
+        toolCalls: m.toolCalls.map(tc =>
+          tc.id === tcId ? { ...tc, args: toolArgsBuffer[tcId] } : tc
+        ),
+      }))
+      break
+    }
+
+    case 'TOOL_CALL_END': {
+      const tcId = event.toolCallId as string
+      updateMessage(assistantId, m => ({
+        ...m,
+        toolCalls: m.toolCalls.map(tc =>
+          tc.id === tcId ? { ...tc, done: true } : tc
+        ),
+      }))
+      break
+    }
+
+    case 'STEP_STARTED': {
+      const step = event.stepName as string
+      updateMessage(assistantId, m => ({ ...m, currentStep: step }))
+      break
+    }
+
+    case 'STEP_FINISHED': {
+      updateMessage(assistantId, m => ({ ...m, currentStep: undefined }))
+      break
+    }
+
+    case 'STATE_SNAPSHOT': {
+      const snapshot = event.snapshot as ToolSnapshot
+      updateMessage(assistantId, m => ({
+        ...m,
+        snapshots: [...m.snapshots, snapshot],
+      }))
+      break
+    }
+
+    case 'RUN_ERROR': {
+      const errMsg = event.message as string
+      updateMessage(assistantId, m => ({
+        ...m,
+        status: 'error',
+        content: m.content || errMsg,
+      }))
+      break
+    }
+  }
+}
