@@ -260,6 +260,13 @@
 .hotel-price small { font-weight: 400; font-size: 11px; color: var(--text-muted); }
 
 /* Flight list */
+.flight-section { margin-bottom: 16px; }
+.flight-section:last-child { margin-bottom: 0; }
+.flight-section-title {
+  font-size: 13px; font-weight: 600; color: var(--navy);
+  padding: 8px 16px; background: var(--off-white);
+  border-bottom: 1px solid var(--gray-100);
+}
 .flight-list { display: flex; flex-direction: column; }
 .flight-item {
   display: grid; grid-template-columns: 1fr auto auto;
@@ -365,6 +372,103 @@
   margin-top: 6px;
 }
 
+/* ── User Input Form ─────────────────────── */
+.user-input-form-container {
+  margin-top: 12px;
+  margin-bottom: 12px;
+}
+
+.user-input-form {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.required-mark {
+  color: var(--red);
+  font-size: 14px;
+}
+
+.form-input {
+  padding: 10px 12px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--white);
+  transition: all 0.2s;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.1);
+}
+
+.form-input:disabled {
+  background: var(--gray-100);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.form-input::placeholder {
+  color: var(--text-muted);
+}
+
+.form-submit-btn {
+  width: 100%;
+  padding: 12px;
+  background: var(--gold);
+  color: var(--navy);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.form-submit-btn:hover:not(:disabled) {
+  background: var(--gold-light);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.form-submit-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.form-submit-btn:disabled {
+  background: var(--gray-200);
+  color: var(--gray-400);
+  cursor: not-allowed;
+}
+
 /* ── Responsive ──────────────────────────── */
 @media (max-width: 600px) {
   .hotel-grid { grid-template-columns: 1fr 1fr; }
@@ -373,4 +477,6 @@
   .welcome-title { font-size: 22px; }
   .suggestions { flex-direction: column; }
   .suggestion-btn { text-align: left; }
+  .form-fields { gap: 10px; }
+  .user-input-form { padding: 14px; }
 }

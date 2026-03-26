@@ -197,7 +197,7 @@ class ADKAgentExecutor(AgentExecutor):
 
                     # 함수 응답 (Tool Call 종료 + 결과)
                     # 1) TOOL_CALL_END DataPart → main.py가 TOOL_CALL_END 이벤트 발행
-                    # 2) tool result DataPart  → main.py가 STATE_SNAPSHOT 이벤트 발행
+                    # 2) tool result DataPart  → main.py가 STATE_SNAPSHOT 또는 USER_INPUT_REQUEST 이벤트 발행
                     elif hasattr(part, "function_response") and part.function_response:
                         fr = part.function_response
                         tc_id = tool_call_map.get(fr.name, str(uuid.uuid4()))
@@ -219,27 +219,46 @@ class ADKAgentExecutor(AgentExecutor):
                             )
                         )
 
-                        # 도구 결과 → STATE_SNAPSHOT
+                        # 도구 결과 처리
                         if fr.response:
-                            await event_queue.enqueue_event(
-                                TaskArtifactUpdateEvent(
-                                    task_id=task_id,
-                                    context_id=context_id,
-                                    artifact=Artifact(
-                                        artifact_id=str(uuid.uuid4()),
-                                        parts=[Part(root=DataPart(data={
-                                            "tool": fr.name,
-                                            "result": (
-                                                fr.response
-                                                if isinstance(fr.response, dict)
-                                                else {"raw": str(fr.response)}
-                                            ),
-                                        }))],
-                                    ),
-                                    append=False,
-                                    last_chunk=False,
+                            response_data = fr.response if isinstance(fr.response, dict) else {"raw": str(fr.response)}
+
+                            # request_user_input 툴인 경우 USER_INPUT_REQUEST 이벤트 생성
+                            if fr.name == "request_user_input" and response_data.get("status") == "user_input_required":
+                                await event_queue.enqueue_event(
+                                    TaskArtifactUpdateEvent(
+                                        task_id=task_id,
+                                        context_id=context_id,
+                                        artifact=Artifact(
+                                            artifact_id=str(uuid.uuid4()),
+                                            parts=[Part(root=DataPart(data={
+                                                "_agui_event": "USER_INPUT_REQUEST",
+                                                "request_id": str(uuid.uuid4()),
+                                                "input_type": response_data.get("input_type", ""),
+                                                "fields": response_data.get("fields", []),
+                                            }))],
+                                        ),
+                                        append=False,
+                                        last_chunk=False,
+                                    )
                                 )
-                            )
+                            else:
+                                # 일반 도구 결과 → STATE_SNAPSHOT
+                                await event_queue.enqueue_event(
+                                    TaskArtifactUpdateEvent(
+                                        task_id=task_id,
+                                        context_id=context_id,
+                                        artifact=Artifact(
+                                            artifact_id=str(uuid.uuid4()),
+                                            parts=[Part(root=DataPart(data={
+                                                "tool": fr.name,
+                                                "result": response_data,
+                                            }))],
+                                        ),
+                                        append=False,
+                                        last_chunk=False,
+                                    )
+                                )
 
         except Exception as e:
             logger.error(f"ADK 실행 오류: {e}", exc_info=True)

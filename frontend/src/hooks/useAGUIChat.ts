@@ -4,6 +4,7 @@ import {
   RunAgentInput,
   AGUIEvent,
   ToolSnapshot,
+  FormField,
 } from '../types'
 
 const AGUI_ENDPOINT = '/agui/run'
@@ -140,7 +141,24 @@ export function useAGUIChat() {
     setError(null)
   }, [])
 
-  return { messages, isRunning, error, sendMessage, stopStreaming, clearMessages }
+  const markFormSubmitted = useCallback((messageId: string) => {
+    updateMessage(messageId, m => ({
+      ...m,
+      userInputRequest: m.userInputRequest
+        ? { ...m.userInputRequest, submitted: true }
+        : undefined,
+    }))
+  }, [updateMessage])
+
+  return {
+    messages,
+    isRunning,
+    error,
+    sendMessage,
+    stopStreaming,
+    clearMessages,
+    markFormSubmitted,
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -224,6 +242,22 @@ function handleEvent(
         ...m,
         status: 'error',
         content: m.content || errMsg,
+      }))
+      break
+    }
+
+    case 'USER_INPUT_REQUEST': {
+      const requestId = event.requestId as string
+      const inputType = event.inputType as string
+      const fields = event.fields as FormField[]
+      updateMessage(assistantId, m => ({
+        ...m,
+        userInputRequest: {
+          requestId,
+          inputType,
+          fields,
+          submitted: false,
+        },
       }))
       break
     }

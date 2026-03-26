@@ -28,6 +28,13 @@ def search_hotels(city: str, check_in: str, check_out: str, guests: int = 2) -> 
     """
     # 실제 환경에서는 hotel_search API 호출
     hotel_db = {
+        "서울": [
+            {"name": "포시즌스 호텔 서울", "area": "광화문", "price": 450000, "rating": 4.9, "stars": 5},
+            {"name": "조선팰리스", "area": "소공동", "price": 380000, "rating": 4.8, "stars": 5},
+            {"name": "롯데호텔 서울", "area": "명동", "price": 320000, "rating": 4.6, "stars": 5},
+            {"name": "그랜드 하얏트 서울", "area": "이태원", "price": 280000, "rating": 4.7, "stars": 5},
+            {"name": "신라스테이 서울역", "area": "서울역", "price": 150000, "rating": 4.3, "stars": 4},
+        ],
         "도쿄": [
             {"name": "파크 하얏트 도쿄", "area": "신주쿠", "price": 420000, "rating": 4.8, "stars": 5},
             {"name": "더 프린스 갤러리 도쿄", "area": "긴자", "price": 380000, "rating": 4.7, "stars": 5},
@@ -82,7 +89,7 @@ def search_hotels(city: str, check_in: str, check_out: str, guests: int = 2) -> 
     }
 
 
-def search_flights(origin: str, destination: str, departure_date: str, passengers: int = 1) -> dict:
+def search_flights(origin: str, destination: str, departure_date: str, passengers: int = 1, return_date: str = "") -> dict:
     """
     출발지/목적지와 날짜로 항공편을 검색합니다.
 
@@ -91,11 +98,13 @@ def search_flights(origin: str, destination: str, departure_date: str, passenger
         destination: 도착 도시 또는 공항 코드 (예: 도쿄, NRT)
         departure_date: 출발 날짜 (YYYY-MM-DD)
         passengers: 승객 수
+        return_date: 귀국 날짜 (YYYY-MM-DD), 빈 문자열이면 편도
 
     Returns:
-        항공편 검색 결과
+        항공편 검색 결과 (편도 또는 왕복)
     """
-    flight_db = {
+    # 편도 항공편 데이터
+    outbound_db = {
         ("서울", "도쿄"): [
             {"airline": "대한항공", "flight": "KE703", "depart": "09:00", "arrive": "11:25", "duration": "2h25m", "price": 380000, "class": "이코노미"},
             {"airline": "아시아나", "flight": "OZ101", "depart": "11:30", "arrive": "13:55", "duration": "2h25m", "price": 350000, "class": "이코노미"},
@@ -111,33 +120,201 @@ def search_flights(origin: str, destination: str, departure_date: str, passenger
         ],
     }
 
-    key = None
-    for (orig, dest) in flight_db:
+    # 귀국편 데이터 (역방향)
+    inbound_db = {
+        ("도쿄", "서울"): [
+            {"airline": "대한항공", "flight": "KE704", "depart": "13:00", "arrive": "15:10", "duration": "2h10m", "price": 380000, "class": "이코노미"},
+            {"airline": "아시아나", "flight": "OZ102", "depart": "15:30", "arrive": "17:40", "duration": "2h10m", "price": 350000, "class": "이코노미"},
+            {"airline": "진에어", "flight": "LJ206", "depart": "18:00", "arrive": "20:05", "duration": "2h05m", "price": 220000, "class": "이코노미"},
+        ],
+        ("오사카", "서울"): [
+            {"airline": "대한항공", "flight": "KE724", "depart": "12:00", "arrive": "13:55", "duration": "1h55m", "price": 320000, "class": "이코노미"},
+            {"airline": "제주항공", "flight": "7C1102", "depart": "15:30", "arrive": "17:20", "duration": "1h50m", "price": 185000, "class": "이코노미"},
+        ],
+        ("방콕", "서울"): [
+            {"airline": "대한항공", "flight": "KE658", "depart": "00:30", "arrive": "08:15", "duration": "5h45m", "price": 650000, "class": "이코노미"},
+            {"airline": "타이항공", "flight": "TG656", "depart": "17:50", "arrive": "01:30+1", "duration": "5h40m", "price": 580000, "class": "이코노미"},
+        ],
+    }
+
+    # 출발편 검색
+    outbound_key = None
+    for (orig, dest) in outbound_db:
         if (orig in origin or origin in orig) and (dest in destination or destination in dest):
-            key = (orig, dest)
+            outbound_key = (orig, dest)
             break
 
-    if not key:
+    if not outbound_key:
         return {
             "status": "not_found",
             "message": f"{origin}→{destination} 구간 항공편을 찾을 수 없습니다.",
             "flights": []
         }
 
-    flights = flight_db[key]
-    for f in flights:
+    outbound_flights = outbound_db[outbound_key]
+    for f in outbound_flights:
         f["departure_date"] = departure_date
         f["passengers"] = passengers
         f["total_price"] = f["price"] * passengers
+        f["direction"] = "outbound"
 
-    return {
+    # 왕복인 경우 귀국편도 검색
+    is_round_trip = bool(return_date)
+    inbound_flights = []
+
+    if is_round_trip:
+        inbound_key = (outbound_key[1], outbound_key[0])  # 역방향
+        if inbound_key in inbound_db:
+            inbound_flights = inbound_db[inbound_key]
+            for f in inbound_flights:
+                f["departure_date"] = return_date
+                f["passengers"] = passengers
+                f["total_price"] = f["price"] * passengers
+                f["direction"] = "inbound"
+
+    result = {
         "status": "success",
-        "origin": key[0],
-        "destination": key[1],
+        "origin": outbound_key[0],
+        "destination": outbound_key[1],
         "departure_date": departure_date,
         "passengers": passengers,
-        "count": len(flights),
-        "flights": flights
+        "trip_type": "round_trip" if is_round_trip else "one_way",
+    }
+
+    if is_round_trip:
+        result["return_date"] = return_date
+        result["outbound_flights"] = outbound_flights
+        result["inbound_flights"] = inbound_flights
+        result["outbound_count"] = len(outbound_flights)
+        result["inbound_count"] = len(inbound_flights)
+    else:
+        result["flights"] = outbound_flights
+        result["count"] = len(outbound_flights)
+
+    return result
+
+
+def request_user_input(input_type: str, fields: str = "", context: str = "") -> dict:
+    """
+    호텔이나 항공편 검색에 필요한 정보가 부족할 때 사용자에게 입력 폼을 요청합니다.
+
+    사용 시기:
+    - 호텔 검색: 도시, 체크인 날짜, 체크아웃 날짜, 인원수 중 하나라도 없을 때
+    - 항공편 검색: 출발지, 목적지, 출발 날짜, 인원수 중 하나라도 없을 때
+
+    Args:
+        input_type: "hotel_booking_details" 또는 "flight_booking_details"
+        fields: 사용하지 않음 (자동 생성됨)
+        context: 호텔의 경우 도시명, 항공편의 경우 "출발지|목적지" 형식
+
+    Returns:
+        사용자 입력 요청 정보
+    """
+    from datetime import datetime, timedelta
+    import json
+
+    # 호텔 예약 폼 필드 생성
+    if input_type == "hotel_booking_details":
+        # 3주 후 날짜 계산
+        check_in_date = datetime.now() + timedelta(weeks=3)
+        check_out_date = check_in_date + timedelta(days=1)  # 1박
+
+        field_list = [
+            {
+                "name": "city",
+                "type": "text",
+                "label": "도시",
+                "required": True,
+                "default": context if context else ""
+            },
+            {
+                "name": "check_in",
+                "type": "date",
+                "label": "체크인",
+                "required": True,
+                "default": check_in_date.strftime("%Y-%m-%d")
+            },
+            {
+                "name": "check_out",
+                "type": "date",
+                "label": "체크아웃",
+                "required": True,
+                "default": check_out_date.strftime("%Y-%m-%d")
+            },
+            {
+                "name": "guests",
+                "type": "number",
+                "label": "인원수",
+                "required": True,
+                "default": "2"
+            }
+        ]
+    elif input_type == "flight_booking_details":
+        # 1개월 후 날짜 계산
+        departure_date = datetime.now() + timedelta(days=30)
+        return_date = departure_date + timedelta(days=7)  # 7일 후 귀국
+
+        # context에서 출발지/목적지 파싱 (예: "서울|도쿄" 또는 "")
+        origin = ""
+        destination = ""
+        if context and "|" in context:
+            parts = context.split("|")
+            origin = parts[0] if len(parts) > 0 else ""
+            destination = parts[1] if len(parts) > 1 else ""
+
+        field_list = [
+            {
+                "name": "origin",
+                "type": "text",
+                "label": "출발지",
+                "required": True,
+                "default": origin
+            },
+            {
+                "name": "destination",
+                "type": "text",
+                "label": "목적지",
+                "required": True,
+                "default": destination
+            },
+            {
+                "name": "trip_type",
+                "type": "select",
+                "label": "여행 유형",
+                "required": True,
+                "options": ["편도", "왕복"],
+                "default": "왕복"
+            },
+            {
+                "name": "departure_date",
+                "type": "date",
+                "label": "출발 날짜",
+                "required": True,
+                "default": departure_date.strftime("%Y-%m-%d")
+            },
+            {
+                "name": "return_date",
+                "type": "date",
+                "label": "귀국 날짜",
+                "required": False,
+                "default": return_date.strftime("%Y-%m-%d")
+            },
+            {
+                "name": "passengers",
+                "type": "number",
+                "label": "승객 수",
+                "required": True,
+                "default": "1"
+            }
+        ]
+    else:
+        # 다른 타입의 폼
+        field_list = []
+
+    return {
+        "status": "user_input_required",
+        "input_type": input_type,
+        "fields": field_list
     }
 
 
@@ -220,7 +397,7 @@ def create_travel_agent() -> LlmAgent:
 
     agent = LlmAgent(
         name="travel_agent",
-        model="gemini-2.0-flash",
+        model="gemini-3-flash-preview",
         description="여행 AI 여행 상담 에이전트 — 호텔, 항공, 관광 정보 안내",
         instruction="""당신은 여행 AI의 AI 여행 상담 전문가입니다.
 
@@ -230,10 +407,17 @@ def create_travel_agent() -> LlmAgent:
 - 정확한 정보를 제공하기 위해 항상 도구를 활용합니다
 
 도구 사용 가이드:
-- 호텔 추천 요청 → search_hotels 도구 사용
-- 항공편 문의 → search_flights 도구 사용  
-- 여행지 정보/팁 → get_travel_tips 도구 사용
-- 복합 요청은 여러 도구를 순서대로 사용
+- 호텔 문의 시:
+  1) 도시만 언급됨 → request_user_input("hotel_booking_details", "", "도시명")
+  2) 모든 정보 있음 → search_hotels(city, check_in, check_out, guests)
+- 항공편 문의 시:
+  1) 출발지나 목적지만 언급됨 → request_user_input("flight_booking_details", "", "출발지|목적지")
+  2) 모든 정보 있음 → search_flights(origin, destination, departure_date, passengers, return_date)
+- 여행지 정보 → get_travel_tips(destination)
+
+예시:
+"서울 호텔 알려줘" → request_user_input("hotel_booking_details", "", "서울")
+"도쿄 6월 10일부터 14일까지 2명" → search_hotels("도쿄", "2026-06-10", "2026-06-14", 2)
 
 응답 형식:
 - 검색 결과는 간결하고 보기 좋게 정리해서 제공
@@ -243,8 +427,9 @@ def create_travel_agent() -> LlmAgent:
 
 제약사항:
 - 실제 예약 처리는 불가능하며, 정보 제공만 가능합니다
-- 모르는 정보는 솔직하게 모른다고 안내합니다""",
+""",
         tools=[
+            FunctionTool(request_user_input),
             FunctionTool(search_hotels),
             FunctionTool(search_flights),
             FunctionTool(get_travel_tips),

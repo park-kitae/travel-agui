@@ -12,6 +12,7 @@ export type AGUIEventType =
   | 'TOOL_CALL_ARGS'
   | 'TOOL_CALL_END'
   | 'STATE_SNAPSHOT'
+  | 'USER_INPUT_REQUEST'
 
 export interface AGUIEvent {
   type: AGUIEventType
@@ -75,6 +76,26 @@ export interface RunErrorEvent extends AGUIEvent {
   code?: string
 }
 
+export interface UserInputRequestEvent extends AGUIEvent {
+  type: 'USER_INPUT_REQUEST'
+  requestId: string
+  inputType: string
+  fields: FormField[]
+}
+
+// 폼 필드 정의
+export interface FormField {
+  name: string
+  type: 'text' | 'date' | 'number' | 'select'
+  label: string
+  required: boolean
+  placeholder?: string
+  options?: string[]
+  min?: number
+  max?: number
+  default?: string  // 기본값
+}
+
 // 도구 결과 스냅샷
 export interface ToolSnapshot {
   tool: string
@@ -122,9 +143,17 @@ export interface FlightSearchResult {
   origin?: string
   destination?: string
   departure_date?: string
+  return_date?: string
   passengers?: number
+  trip_type?: string
+  // 편도
   count?: number
   flights?: Flight[]
+  // 왕복
+  outbound_count?: number
+  inbound_count?: number
+  outbound_flights?: Flight[]
+  inbound_flights?: Flight[]
   message?: string
 }
 
@@ -161,6 +190,15 @@ export interface ChatMessage {
   snapshots: ToolSnapshot[]
   timestamp: Date
   currentStep?: string
+  userInputRequest?: UserInputRequest
+}
+
+// 사용자 입력 요청 상태
+export interface UserInputRequest {
+  requestId: string
+  inputType: string
+  fields: FormField[]
+  submitted: boolean
 }
 
 // AG-UI RunAgentInput

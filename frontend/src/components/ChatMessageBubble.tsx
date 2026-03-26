@@ -1,14 +1,26 @@
 import { ChatMessage as ChatMessageType } from '../types'
 import { ToolCallIndicator } from './ToolCallIndicator'
 import { ToolResultCard } from './ToolResultCard'
+import { UserInputForm } from './UserInputForm'
 
 interface Props {
   message: ChatMessageType
+  onFormSubmit?: (data: Record<string, string>) => void
 }
 
-export function ChatMessageBubble({ message }: Props) {
+export function ChatMessageBubble({ message, onFormSubmit }: Props) {
   const isUser = message.role === 'user'
   const isStreaming = message.status === 'streaming'
+
+  const handleFormSubmit = (data: Record<string, string>) => {
+    if (onFormSubmit) {
+      // 구조화된 데이터를 자연어로 변환
+      const formattedMessage = Object.entries(data)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join(', ')
+      onFormSubmit({ ...data, _formatted: formattedMessage })
+    }
+  }
 
   return (
     <div className={`message-row ${isUser ? 'user' : 'assistant'}`}>
@@ -33,6 +45,17 @@ export function ChatMessageBubble({ message }: Props) {
             {message.snapshots.map((snap, i) => (
               <ToolResultCard key={i} snapshot={snap} />
             ))}
+          </div>
+        )}
+
+        {/* 사용자 입력 폼 */}
+        {!isUser && message.userInputRequest && !message.userInputRequest.submitted && (
+          <div className="user-input-form-container">
+            <UserInputForm
+              fields={message.userInputRequest.fields}
+              onSubmit={handleFormSubmit}
+              disabled={isStreaming}
+            />
           </div>
         )}
 

@@ -3,3 +3,11 @@ node_modules
 
 .vscode
 .claude
+
+# Test screenshots
+tests/screenshots/*.png
+
+# Logs
+logs/
+*.logbackend/__pycache__/
+__pycache__/

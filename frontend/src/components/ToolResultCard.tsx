@@ -58,23 +58,60 @@ function HotelItem({ hotel }: { hotel: Hotel }) {
 
 // ── 항공 카드 ──────────────────────────────────
 function FlightCard({ data }: { data: FlightSearchResult }) {
-  if (data.status !== 'success' || !data.flights?.length) return null
+  if (data.status !== 'success') return null
+
+  const isRoundTrip = data.trip_type === 'round_trip'
+  const hasFlights = isRoundTrip
+    ? (data.outbound_flights?.length || data.inbound_flights?.length)
+    : data.flights?.length
+
+  if (!hasFlights) return null
+
   return (
     <div className="tool-card">
       <div className="tool-card-header">
         <span className="tool-icon">✈️</span>
         <span className="tool-title">
-          {data.origin} → {data.destination}
+          {data.origin} ↔ {data.destination} {isRoundTrip ? '왕복' : '편도'}
         </span>
         <span className="tool-meta">
-          {data.departure_date} · {data.passengers}명
+          {data.departure_date} {isRoundTrip && data.return_date && `~ ${data.return_date}`} · {data.passengers}명
         </span>
       </div>
-      <div className="flight-list">
-        {data.flights!.map((f, i) => (
-          <FlightItem key={i} flight={f} />
-        ))}
-      </div>
+
+      {/* 왕복 항공편 */}
+      {isRoundTrip ? (
+        <>
+          {data.outbound_flights && data.outbound_flights.length > 0 && (
+            <div className="flight-section">
+              <div className="flight-section-title">출발편 ({data.origin} → {data.destination})</div>
+              <div className="flight-list">
+                {data.outbound_flights.map((f, i) => (
+                  <FlightItem key={`out-${i}`} flight={f} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {data.inbound_flights && data.inbound_flights.length > 0 && (
+            <div className="flight-section">
+              <div className="flight-section-title">귀국편 ({data.destination} → {data.origin})</div>
+              <div className="flight-list">
+                {data.inbound_flights.map((f, i) => (
+                  <FlightItem key={`in-${i}`} flight={f} />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        /* 편도 항공편 */
+        <div className="flight-list">
+          {data.flights!.map((f, i) => (
+            <FlightItem key={i} flight={f} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

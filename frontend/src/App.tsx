@@ -10,7 +10,7 @@ const SUGGESTIONS = [
 ]
 
 export default function App() {
-  const { messages, isRunning, error, sendMessage, stopStreaming, clearMessages } = useAGUIChat()
+  const { messages, isRunning, error, sendMessage, stopStreaming, clearMessages, markFormSubmitted } = useAGUIChat()
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -38,6 +38,63 @@ export default function App() {
   const handleSuggestion = (text: string) => {
     if (isRunning) return
     sendMessage(text)
+  }
+
+  const handleFormSubmit = (messageId: string, data: Record<string, string>) => {
+    if (isRunning) return
+
+    // 폼 제출 상태 업데이트
+    markFormSubmitted(messageId)
+
+    // 날짜를 자연어로 변환하는 함수
+    const formatDate = (dateStr: string): string => {
+      const date = new Date(dateStr)
+      const year = date.getFullYear()
+      const month = date.getMonth() + 1
+      const day = date.getDate()
+      return `${year}년 ${month}월 ${day}일`
+    }
+
+    let formattedMessage = ''
+
+    // 호텔 예약 폼
+    if (data.city !== undefined || data.check_in !== undefined) {
+      const city = data.city || ''
+      const checkIn = data.check_in ? formatDate(data.check_in) : ''
+      const checkOut = data.check_out ? formatDate(data.check_out) : ''
+      const guests = data.guests || ''
+
+      if (city && checkIn && checkOut && guests) {
+        formattedMessage = `${city}에서 ${checkIn}부터 ${checkOut}까지 ${guests}명이 숙박할 호텔을 검색합니다.`
+      } else if (checkIn && checkOut && guests) {
+        formattedMessage = `${checkIn}부터 ${checkOut}까지 ${guests}명이 숙박할 호텔을 검색합니다.`
+      }
+    }
+    // 항공편 예약 폼
+    else if (data.origin !== undefined || data.destination !== undefined) {
+      const origin = data.origin || ''
+      const destination = data.destination || ''
+      const tripType = data.trip_type || '편도'
+      const departureDate = data.departure_date ? formatDate(data.departure_date) : ''
+      const returnDate = data.return_date ? formatDate(data.return_date) : ''
+      const passengers = data.passengers || ''
+
+      if (tripType === '왕복' && origin && destination && departureDate && returnDate && passengers) {
+        formattedMessage = `${origin}에서 ${destination}까지 ${departureDate} 출발, ${returnDate} 귀국, ${passengers}명의 왕복 항공편을 검색합니다.`
+      } else if (origin && destination && departureDate && passengers) {
+        formattedMessage = `${origin}에서 ${destination}까지 ${departureDate} 출발, ${passengers}명의 편도 항공편을 검색합니다.`
+      }
+    }
+
+    // 폴백: 기존 방식
+    if (!formattedMessage) {
+      formattedMessage = Object.entries(data)
+        .filter(([key]) => key !== '_formatted')
+        .map(([key, value]) => `${key}: ${value}`)
+        .join(', ')
+    }
+
+    sendMessage(formattedMessage)
   }
 
   const isEmpty = messages.length === 0
@@ -86,7 +143,11 @@ export default function App() {
         ) : (
           <div className="messages">
             {messages.map(msg => (
-              <ChatMessageBubble key={msg.id} message={msg} />
+              <ChatMessageBubble
+                key={msg.id}
+                message={msg}
+                onFormSubmit={(data) => handleFormSubmit(msg.id, data)}
+              />
             ))}
             <div ref={bottomRef} />
           </div>
