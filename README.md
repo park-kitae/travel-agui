@@ -77,9 +77,10 @@ travel-agui/
 │   ├── package.json
 │   └── node_modules/
 └── tests/
-    ├── e2e/              # Playwright E2E 테스트 스크립트
-    ├── screenshots/      # 테스트 스크린샷 (gitignore)
-    └── README.md         # 테스트 문서
+    ├── e2e/              # Playwright Test 기반 E2E 스위트
+    │   ├── *.spec.ts     # 호텔/항공편/폼/응답 검증 시나리오
+    │   └── utils/        # 공통 헬퍼
+    └── screenshots/      # 테스트 스크린샷 (gitignore)
 ```
 
 ---
@@ -296,35 +297,53 @@ httpx>=0.27.0
 
 ## E2E 테스트
 
-Playwright를 사용한 E2E 테스트 스위트가 포함되어 있습니다.
+현재 E2E 테스트는 모두 Playwright Test Framework 기반으로 정리되어 있습니다.
 
 ### 테스트 실행
 
 ```bash
-# 서버가 실행 중이어야 함 (./start.sh)
-node tests/e2e/test-full-flow.js
-node tests/e2e/test-hotel-direct.js
-node tests/e2e/test-flight-form.js
-# ... 기타 테스트
+# 서버가 실행 중이어야 함
+./start.sh
+
+# 전체 E2E 실행
+npm test
+
+# 동일한 E2E 명령 별칭
+npm run test:e2e
+
+# 브라우저를 보면서 실행
+npm run test:e2e:headed
+
+# Playwright UI 모드
+npm run test:ui
+
+# 특정 테스트만 실행
+npx playwright test tests/e2e/full-flow.spec.ts
 ```
 
 ### 주요 테스트 시나리오
 
 | 테스트 파일 | 목적 |
 |---|---|
-| `test-full-flow.js` | 호텔 + 항공편 검색 전체 플로우 |
-| `test-hotel-direct.js` | 모든 정보가 포함된 직접 검색 |
-| `test-default-values.js` | 폼 기본값 자동 설정 확인 |
-| `test-natural-language.js` | 폼 제출 시 자연어 메시지 변환 |
-| `test-flight-form.js` | 항공편 폼 및 왕복 옵션 |
-| `test-form-submit.js` | 폼 제출 후 상태 변화 |
-| `test-form-values.js` | 폼 입력값 확인 |
+| `tests/e2e/full-flow.spec.ts` | 호텔 + 항공편 검색 전체 플로우 |
+| `tests/e2e/hotel-direct-search.spec.ts` | 모든 정보가 포함된 호텔 직접 검색 |
+| `tests/e2e/default-values.spec.ts` | 호텔 폼 기본값 자동 설정 확인 |
+| `tests/e2e/natural-language.spec.ts` | 폼 제출 시 자연어 메시지 변환 |
+| `tests/e2e/flight-form.spec.ts` | 항공편 폼 기본값 및 자동 입력 |
+| `tests/e2e/form-submit.spec.ts` | 호텔 폼 제출 후 결과 표시 |
+| `tests/e2e/form-values.spec.ts` | 호텔 폼 입력값과 제출 상태 확인 |
+| `tests/e2e/assistant-response-check.spec.ts` | 툴 호출/폼 렌더링 응답 검증 |
+| `tests/e2e/response-capture.spec.ts` | `/agui/run` SSE 응답 캡처 검증 |
 
-**상세 문서**: `tests/README.md` 참조
+### 최근 검증 결과
 
-### 스크린샷
+- `npx playwright test`
+- 결과: `11 passed`
 
-테스트 실행 시 스크린샷이 `tests/screenshots/` 디렉토리에 저장됩니다.
+### 아티팩트
+
+- 실패 시 Playwright 스크린샷/비디오/trace가 자동 저장됩니다.
+- HTML 리포트는 `playwright-report/`에 생성됩니다.
 
 ---
 
@@ -397,22 +416,8 @@ curl http://localhost:5173
 ./start.sh
 
 # 테스트 재실행
-node tests/e2e/test-full-flow.js
+npm test
 ```
-
-### 사용자 입력 폼이 표시되지 않음
-
-**문제**: 호텔이나 항공편 검색 시 폼이 나타나지 않음
-
-**현재 상태**:
-- 직접 검색 (모든 정보 포함): 정상 작동
-  - 예: "도쿄 호텔 추천해줘 (6월 10일~14일, 2명)"
-- 부분 정보 검색: 폼이 나타나지 않는 이슈 있음
-  - 예: "서울 호텔 알려줘"
-
-**임시 해결**: 모든 정보를 포함하여 질문
-- 호텔: "도시명 + 날짜 + 인원수"
-- 항공편: "출발지 + 목적지 + 날짜 + 인원수"
 
 ---
 

@@ -336,33 +336,21 @@ instruction="""당신은 여행 AI의 AI 여행 상담 전문가입니다.
 
 ### Instruction 수정 시 주의사항
 
-**문제점**: 사용자 입력 폼(`request_user_input`)이 호출되지 않는 이슈
+`request_user_input` 호출 규칙은 프런트 UX와 직접 연결되므로 가장 먼저 회귀 테스트해야 합니다.
 
-**원인**:
-- Instruction에 "도시만 언급됨 → request_user_input" 규칙이 있지만 LLM이 이를 무시하는 경우 발생
-- LLM이 정보가 부족하다고 판단하지 못하거나, 다른 전략을 선택할 수 있음
+**핵심 규칙**:
+1. 호텔/항공편 검색 정보가 하나라도 부족하면 텍스트 질문보다 `request_user_input`을 우선 호출합니다.
+2. 이미 문맥에서 알 수 있는 값은 `context`로 넘겨 폼 기본값을 채웁니다.
+3. instruction 수정 후에는 반드시 Playwright E2E로 폼 표시, 기본값, 제출 후 자연어 변환까지 확인합니다.
 
-**해결 방법**:
-1. **더 명확한 조건 명시**:
-   ```
-   "호텔 알려줘" 또는 "호텔 추천해줘"라는 메시지에서
-   도시, 체크인, 체크아웃, 인원수 중 하나라도 누락되면
-   반드시 request_user_input을 호출하세요.
-   ```
+**권장 표현 예시**:
+```
+호텔 또는 항공편 검색에서 필수 정보가 하나라도 누락되면
+텍스트로 추가 질문하지 말고 반드시 request_user_input을 호출하세요.
 
-2. **예시 추가**:
-   ```
-   ❌ 잘못된 예:
-   "서울 호텔 알려줘" → "체크인 날짜를 알려주세요" (텍스트로 질문)
-
-   ✅ 올바른 예:
-   "서울 호텔 알려줘" → request_user_input("hotel_booking_details", "", "서울")
-   ```
-
-3. **우선순위 강조**:
-   ```
-   중요: 정보가 부족하면 텍스트로 질문하지 말고 반드시 request_user_input을 호출하세요.
-   ```
+- "서울 호텔 알려줘" → request_user_input("hotel_booking_details", "", "서울")
+- "서울에서 도쿄 가는 항공편" → request_user_input("flight_booking_details", "", "서울|도쿄")
+```
 
 ---
 
@@ -666,6 +654,32 @@ cd backend
 source .venv/bin/activate
 pytest test_agent.py
 ```
+
+### 6-1. Playwright E2E 회귀 테스트
+
+에이전트 instruction, tool schema, 응답 포맷을 수정했다면 프런트와의 연결까지 함께 검증해야 합니다.
+
+**주요 E2E 파일**:
+- `tests/e2e/default-values.spec.ts`
+- `tests/e2e/flight-form.spec.ts`
+- `tests/e2e/natural-language.spec.ts`
+- `tests/e2e/full-flow.spec.ts`
+- `tests/e2e/response-capture.spec.ts`
+
+**실행**:
+```bash
+# 루트에서 실행, 서버는 미리 실행되어 있어야 함
+npm test
+
+# 특정 시나리오만 실행
+npx playwright test tests/e2e/full-flow.spec.ts
+```
+
+**특히 확인할 회귀 포인트**:
+1. `request_user_input` 호출 시 `.user-input-form` 이 표시되는지
+2. `context` 값이 도시/출발지/목적지 기본값으로 반영되는지
+3. 폼 제출 후 자연어 사용자 메시지가 다시 생성되는지
+4. `search_hotels`, `search_flights` 결과가 `.tool-card`로 렌더링되는지
 
 ### 7. 에러 처리
 
