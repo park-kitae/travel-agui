@@ -99,10 +99,11 @@ export interface FormField {
 // 도구 결과 스냅샷
 export interface ToolSnapshot {
   tool: string
-  result: HotelSearchResult | FlightSearchResult | TravelTipsResult | Record<string, unknown>
+  result: HotelSearchResult | FlightSearchResult | TravelTipsResult | HotelDetailResult | Record<string, unknown>
 }
 
 export interface Hotel {
+  hotel_code: string
   name: string
   area: string
   price: number
@@ -112,6 +113,52 @@ export interface Hotel {
   check_in: string
   check_out: string
   guests: number
+}
+
+export interface RoomType {
+  type: string
+  size: string
+  price_per_night: number
+  max_guests: number
+  bed: string
+}
+
+export interface HotelDetail {
+  hotel_code: string
+  name: string
+  city: string
+  area: string
+  stars: number
+  rating: number
+  address: string
+  phone: string
+  description: string
+  amenities: string[]
+  room_types: RoomType[]
+  check_in_time: string
+  check_out_time: string
+  cancel_policy: string
+  highlights: string[]
+}
+
+export interface HotelDetailResult {
+  status: string
+  hotel_code?: string
+  name?: string
+  city?: string
+  area?: string
+  stars?: number
+  rating?: number
+  address?: string
+  phone?: string
+  description?: string
+  amenities?: string[]
+  room_types?: RoomType[]
+  check_in_time?: string
+  check_out_time?: string
+  cancel_policy?: string
+  highlights?: string[]
+  message?: string
 }
 
 export interface HotelSearchResult {

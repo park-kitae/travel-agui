@@ -221,6 +221,9 @@ class ADKAgentExecutor(AgentExecutor):
 
                         # 도구 결과 처리
                         if fr.response:
+                            logger.info(f"[DEBUG] {fr.name} fr.response type={type(fr.response).__name__} keys={list(fr.response.keys()) if isinstance(fr.response, dict) else 'N/A'}")
+                            if isinstance(fr.response, dict) and 'hotels' in fr.response:
+                                logger.info(f"[DEBUG] first hotel keys={list(fr.response['hotels'][0].keys()) if fr.response['hotels'] else 'empty'}")
                             response_data = fr.response if isinstance(fr.response, dict) else {"raw": str(fr.response)}
 
                             # request_user_input 툴인 경우 USER_INPUT_REQUEST 이벤트 생성

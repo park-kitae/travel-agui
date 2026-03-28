@@ -46,9 +46,8 @@ ADK Runner → Gemini LLM + FunctionTools
 
 ```
 travel-agui/
-├── start.sh              # 서버 일괄 시작 스크립트
-├── stop.sh               # 서버 종료 스크립트
-├── README.md             # 프로젝트 문서
+├── start.py              # 서버 일괄 시작 스크립트 (macOS/Windows 공통)
+├── README.md
 ├── AGENT.md              # 에이전트 개발 가이드
 ├── logs/                 # 서버 로그 파일 (gitignore)
 ├── backend/
@@ -59,9 +58,9 @@ travel-agui/
 │   │                     #   ADKAgentExecutor: ADK 이벤트 → A2A 이벤트 변환
 │   ├── main.py           # AG-UI 게이트웨이 (포트 8000)
 │   │                     #   A2AClient: A2A 이벤트 → AG-UI 이벤트 변환
-│   ├── requirements.txt
+│   ├── pyproject.toml    # uv 프로젝트 설정 및 의존성
 │   ├── .env.example
-│   └── .venv/            # Python 가상환경
+│   └── .venv/            # uv가 자동 생성하는 가상환경
 ├── frontend/
 │   ├── src/
 │   │   ├── hooks/
@@ -87,70 +86,119 @@ travel-agui/
 
 ## 실행 방법
 
+### 사전 요구사항
+
+| 항목 | 버전 | 설치 |
+|---|---|---|
+| Python | 3.11+ | [python.org](https://www.python.org) |
+| uv | 최신 | 아래 참고 |
+| Node.js | 18+ | [nodejs.org](https://nodejs.org) |
+| Google Gemini API Key | — | [aistudio.google.com](https://aistudio.google.com) |
+
+#### uv 설치
+
+**macOS / Linux**
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**Windows (PowerShell)**
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+---
+
 ### 빠른 시작 (권장)
 
-프로젝트 루트에서 한 번에 실행:
+#### macOS / Linux
 
 ```bash
 # 1. 환경 변수 설정 (최초 1회)
-cd backend
-cp .env.example .env
-# .env 파일에 GOOGLE_API_KEY 입력
+cp backend/.env.example backend/.env
+# backend/.env 파일에 GOOGLE_API_KEY 입력
 
-# 2. 백엔드 가상환경 생성 및 패키지 설치 (최초 1회)
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cd ..
+# 2. 백엔드 의존성 설치 (최초 1회)
+cd backend && uv sync && cd ..
 
 # 3. 프론트엔드 패키지 설치 (최초 1회)
-cd frontend
-npm install
-cd ..
+cd frontend && npm install && cd ..
 
-# 4. 서버 시작 (백엔드 + 프론트엔드 동시 실행)
-./start.sh
-# → A2A 서버: http://localhost:8001
-# → AG-UI 게이트웨이: http://localhost:8000
-# → 프론트엔드: http://localhost:5173
-
-# 5. 서버 종료
-# Ctrl+C 또는 별도 터미널에서:
-./stop.sh
+# 4. 서버 시작
+python start.py
 ```
 
-**start.sh 기능:**
+#### Windows
+
+```powershell
+# 1. 환경 변수 설정 (최초 1회)
+copy backend\.env.example backend\.env
+# backend\.env 파일에 GOOGLE_API_KEY 입력
+
+# 2. 백엔드 의존성 설치 (최초 1회)
+cd backend; uv sync; cd ..
+
+# 3. 프론트엔드 패키지 설치 (최초 1회)
+cd frontend; npm install; cd ..
+
+# 4. 서버 시작
+python start.py
+```
+
+**서버 주소:**
+- A2A 에이전트 서버: http://localhost:8001
+- AG-UI 게이트웨이: http://localhost:8000
+- 프론트엔드 UI: http://localhost:5173
+
+**종료:** `Ctrl+C`
+
+**start.py 자동 처리 항목:**
 - 기존 프로세스 자동 종료 (포트 충돌 방지)
+- `uv sync`로 의존성 최신화
 - 백엔드 A2A 서버 시작 및 헬스체크
 - 프론트엔드 개발 서버 시작 및 헬스체크
 - 실시간 로그 출력 (`logs/` 디렉토리)
 - Ctrl+C로 모든 서버 graceful shutdown
 
-**stop.sh 옵션:**
-```bash
-./stop.sh              # 서버 종료
-./stop.sh --clean-logs # 서버 종료 + 로그 파일 삭제
-```
+---
 
 ### 수동 실행 (개발 시 디버깅용)
 
-터미널 3개를 사용하여 개별 실행:
+터미널 3개를 사용하여 개별 실행합니다.
+
+#### macOS / Linux
 
 ```bash
 # 터미널 1 — A2A 에이전트 서버 (포트 8001)
 cd backend
-source .venv/bin/activate
-python a2a_server.py
+uv run python a2a_server.py
 
 # 터미널 2 — AG-UI 게이트웨이 (포트 8000)
 cd backend
-source .venv/bin/activate
-python main.py
+uv run python main.py
 
 # 터미널 3 — 프론트엔드 개발 서버 (포트 5173)
 cd frontend
 npm run dev
 ```
+
+#### Windows
+
+```powershell
+# 터미널 1 — A2A 에이전트 서버 (포트 8001)
+cd backend
+uv run python a2a_server.py
+
+# 터미널 2 — AG-UI 게이트웨이 (포트 8000)
+cd backend
+uv run python main.py
+
+# 터미널 3 — 프론트엔드 개발 서버 (포트 5173)
+cd frontend
+npm run dev
+```
+
+---
 
 ### 테스트 질문 예시
 
@@ -277,20 +325,29 @@ for msg in body["messages"]:
 ## 환경 요구사항
 
 - Python 3.11+
+- uv (패키지 매니저)
 - Node.js 18+
 - Google Gemini API Key
 
-## 의존성 (requirements.txt)
+## 의존성 (backend/pyproject.toml)
 
+```toml
+dependencies = [
+    "google-adk>=1.0.0",
+    "a2a-sdk>=0.2.0",
+    "ag-ui-protocol>=0.1.14",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0.0",
+    "httpx>=0.27.0",
+]
 ```
-google-adk>=1.0.0
-a2a-sdk>=0.2.0
-ag-ui-protocol>=0.1.14
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
-python-dotenv>=1.0.0
-pydantic>=2.0.0
-httpx>=0.27.0
+
+의존성 추가 시:
+```bash
+cd backend
+uv add <패키지명>
 ```
 
 ---
@@ -303,7 +360,7 @@ httpx>=0.27.0
 
 ```bash
 # 서버가 실행 중이어야 함
-./start.sh
+python start.py
 
 # 전체 E2E 실행
 npm test
@@ -353,43 +410,90 @@ npx playwright test tests/e2e/full-flow.spec.ts
 
 **문제**: `Address already in use` 에러 발생
 
-**해결**:
+**macOS / Linux**
 ```bash
-# 특정 포트 사용 프로세스 확인
-lsof -ti :8001  # A2A 서버
-lsof -ti :8000  # AG-UI 게이트웨이
-lsof -ti :5173  # 프론트엔드
-
-# 모든 서버 종료
-./stop.sh
+# 포트 점유 프로세스 확인 및 종료
+lsof -ti :8001 | xargs kill -9
+lsof -ti :8000 | xargs kill -9
+lsof -ti :5173 | xargs kill -9
 ```
+
+**Windows (PowerShell)**
+```powershell
+# 포트 점유 PID 확인
+netstat -ano | findstr :8001
+netstat -ano | findstr :8000
+netstat -ano | findstr :5173
+
+# PID로 프로세스 종료 (예: PID 1234)
+taskkill /F /PID 1234
+```
+
+---
 
 ### 서버 시작 실패
 
 **문제**: 백엔드 또는 프론트엔드 서버가 시작되지 않음
 
-**해결**:
+**macOS / Linux**
 ```bash
 # 로그 확인
 cat logs/backend.log
 cat logs/frontend.log
 
-# 수동으로 개별 실행하여 에러 확인
-cd backend
-source .venv/bin/activate
-python a2a_server.py  # 또는 python main.py
+# 수동 실행으로 에러 확인
+cd backend && uv run python a2a_server.py
 ```
+
+**Windows (PowerShell)**
+```powershell
+# 로그 확인
+Get-Content logs\backend.log
+Get-Content logs\frontend.log
+
+# 수동 실행으로 에러 확인
+cd backend; uv run python a2a_server.py
+```
+
+---
+
+### uv 명령어를 찾을 수 없음
+
+**문제**: `uv: command not found` 또는 `'uv'은(는) 내부 또는 외부 명령...`
+
+**macOS / Linux**
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# 터미널 재시작 또는:
+source ~/.bashrc  # 또는 source ~/.zshrc
+```
+
+**Windows (PowerShell)**
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+# PowerShell 재시작 후 사용 가능
+```
+
+---
 
 ### 환경 변수 누락
 
 **문제**: `GOOGLE_API_KEY not found` 에러
 
-**해결**:
+**macOS / Linux**
 ```bash
-cd backend
-cp .env.example .env
-# .env 파일을 열어 GOOGLE_API_KEY 입력
+cp backend/.env.example backend/.env
+# backend/.env 파일을 열어 GOOGLE_API_KEY 입력
 ```
+
+**Windows**
+```powershell
+copy backend\.env.example backend\.env
+# backend\.env 파일을 열어 GOOGLE_API_KEY 입력
+notepad backend\.env
+```
+
+---
 
 ### LLM 응답 없음 또는 타임아웃
 
@@ -401,21 +505,31 @@ cp .env.example .env
 3. API 키 유효성 확인
 4. 네트워크 연결 확인
 
+---
+
 ### 테스트 실패
 
 **문제**: E2E 테스트가 실패하거나 타임아웃
 
-**해결**:
+**macOS / Linux**
 ```bash
-# 서버가 실행 중인지 확인
+# 서버 상태 확인
 curl http://localhost:8001/.well-known/agent-card.json
 curl http://localhost:5173
 
 # 서버 재시작
-./stop.sh
-./start.sh
+python start.py
+npm test
+```
 
-# 테스트 재실행
+**Windows (PowerShell)**
+```powershell
+# 서버 상태 확인
+Invoke-WebRequest http://localhost:8001/.well-known/agent-card.json
+Invoke-WebRequest http://localhost:5173
+
+# 서버 재시작
+python start.py
 npm test
 ```
 

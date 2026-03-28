@@ -6,9 +6,10 @@ import { UserInputForm } from './UserInputForm'
 interface Props {
   message: ChatMessageType
   onFormSubmit?: (data: Record<string, string>) => void
+  onHotelClick?: (hotelCode: string, hotelName: string) => void
 }
 
-export function ChatMessageBubble({ message, onFormSubmit }: Props) {
+export function ChatMessageBubble({ message, onFormSubmit, onHotelClick }: Props) {
   const isUser = message.role === 'user'
   const isStreaming = message.status === 'streaming'
 
@@ -43,7 +44,7 @@ export function ChatMessageBubble({ message, onFormSubmit }: Props) {
         {!isUser && message.snapshots.length > 0 && (
           <div className="snapshots">
             {message.snapshots.map((snap, i) => (
-              <ToolResultCard key={i} snapshot={snap} />
+              <ToolResultCard key={i} snapshot={snap} onHotelClick={onHotelClick} />
             ))}
           </div>
         )}

@@ -19,6 +19,7 @@ export function useAGUIChat() {
   const [error, setError] = useState<string | null>(null)
   const threadIdRef = useRef<string>(generateId())
   const abortRef = useRef<AbortController | null>(null)
+  const isRunningRef = useRef(false)
 
   // 메시지 단건 업데이트 헬퍼
   const updateMessage = useCallback((id: string, updater: (m: ChatMessage) => ChatMessage) => {
@@ -26,9 +27,10 @@ export function useAGUIChat() {
   }, [])
 
   const sendMessage = useCallback(async (userText: string) => {
-    if (isRunning || !userText.trim()) return
+    if (isRunningRef.current || !userText.trim()) return
     setError(null)
     setIsRunning(true)
+    isRunningRef.current = true
 
     // 1. 사용자 메시지 추가
     const userMsg: ChatMessage = {
@@ -127,13 +129,26 @@ export function useAGUIChat() {
       updateMessage(assistantId, m => ({ ...m, status: 'error', content: m.content || msg }))
     } finally {
       setIsRunning(false)
+      isRunningRef.current = false
     }
-  }, [isRunning, messages, updateMessage])
+  }, [messages, updateMessage])
 
   const stopStreaming = useCallback(() => {
     abortRef.current?.abort()
     setIsRunning(false)
+    isRunningRef.current = false
   }, [])
+
+  // 현재 스트리밍 중단 후 즉시 새 메시지 전송 (호텔 클릭 등에서 사용)
+  const interruptAndSend = useCallback((userText: string) => {
+    if (!userText.trim()) return
+    abortRef.current?.abort()
+    abortRef.current = null
+    setIsRunning(false)
+    isRunningRef.current = false
+    // 다음 이벤트 루프에서 sendMessage 호출 (상태 업데이트 후)
+    setTimeout(() => sendMessage(userText), 0)
+  }, [sendMessage])
 
   const clearMessages = useCallback(() => {
     threadIdRef.current = generateId()
@@ -155,6 +170,7 @@ export function useAGUIChat() {
     isRunning,
     error,
     sendMessage,
+    interruptAndSend,
     stopStreaming,
     clearMessages,
     markFormSubmitted,

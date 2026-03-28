@@ -10,7 +10,7 @@ const SUGGESTIONS = [
 ]
 
 export default function App() {
-  const { messages, isRunning, error, sendMessage, stopStreaming, clearMessages, markFormSubmitted } = useAGUIChat()
+  const { messages, isRunning, error, sendMessage, interruptAndSend, stopStreaming, clearMessages, markFormSubmitted } = useAGUIChat()
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -38,6 +38,10 @@ export default function App() {
   const handleSuggestion = (text: string) => {
     if (isRunning) return
     sendMessage(text)
+  }
+
+  const handleHotelClick = (hotelCode: string, hotelName: string) => {
+    interruptAndSend(`${hotelName}(${hotelCode}) 호텔의 상세 정보를 알려줘`)
   }
 
   const handleFormSubmit = (messageId: string, data: Record<string, string>) => {
@@ -147,6 +151,7 @@ export default function App() {
                 key={msg.id}
                 message={msg}
                 onFormSubmit={(data) => handleFormSubmit(msg.id, data)}
+                onHotelClick={handleHotelClick}
               />
             ))}
             <div ref={bottomRef} />
