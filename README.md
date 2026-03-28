@@ -5,11 +5,13 @@ React + Vite 프론트엔드와 Google ADK 에이전트를 **A2A → AG-UI** 이
 ## 주요 기능
 
 - **호텔 검색**: 도시, 날짜, 인원수를 기반으로 호텔 추천
+- **호텔 상세 조회**: 호텔 카드 클릭 시 객실 정보, 편의시설, 위치 등 상세 정보 표시
 - **항공편 검색**: 출발지, 목적지, 날짜, 인원수로 왕복 항공편 검색
 - **여행 정보**: 목적지별 여행 팁 및 관광 정보 제공
 - **사용자 입력 폼**: 정보가 부족할 때 대화형 폼으로 필요한 정보 수집
 - **실시간 스트리밍**: SSE를 통한 에이전트 응답 실시간 렌더링
 - **툴 실행 표시**: 호텔/항공편 검색 진행 상태 실시간 표시
+- **스트림 인터럽트**: 응답 중에도 호텔 클릭 시 현재 스트림을 중단하고 즉시 새 요청 전송
 
 ---
 
@@ -29,6 +31,7 @@ A2A Agent Server  (Starlette :8001)  ← a2a_server.py
     ▼
 ADK Runner → Gemini LLM + FunctionTools
     search_hotels / search_flights / get_travel_tips
+    get_hotel_detail / request_user_input
 ```
 
 ### 레이어별 역할
@@ -53,22 +56,26 @@ travel-agui/
 ├── backend/
 │   ├── agent.py          # ADK LlmAgent + FunctionTool 정의
 │   │                     #   - search_hotels / search_flights
-│   │                     #   - get_travel_tips / request_user_input
+│   │                     #   - get_hotel_detail / get_travel_tips
+│   │                     #   - request_user_input
 │   ├── a2a_server.py     # A2A 에이전트 서버 (포트 8001)
 │   │                     #   ADKAgentExecutor: ADK 이벤트 → A2A 이벤트 변환
 │   ├── main.py           # AG-UI 게이트웨이 (포트 8000)
 │   │                     #   A2AClient: A2A 이벤트 → AG-UI 이벤트 변환
 │   ├── pyproject.toml    # uv 프로젝트 설정 및 의존성
-│   ├── .env.example
-│   └── .venv/            # uv가 자동 생성하는 가상환경
+│   ├── .env.example      # 환경 변수 템플릿
+│   └── .venv/            # uv가 자동 생성하는 가상환경 (gitignore)
 ├── frontend/
 │   ├── src/
 │   │   ├── hooks/
 │   │   │   └── useAGUIChat.ts        # AG-UI SSE 스트림 처리 훅
+│   │   │                             #   - interruptAndSend: 스트림 중단 후 새 요청
+│   │   │                             #   - isRunningRef: stale closure 방지
 │   │   ├── components/
 │   │   │   ├── ChatMessageBubble.tsx
 │   │   │   ├── ToolCallIndicator.tsx  # 실시간 툴 실행 상태 표시
-│   │   │   └── ToolResultCard.tsx     # 호텔/항공/여행팁 카드 렌더링
+│   │   │   ├── ToolResultCard.tsx     # 호텔/항공/여행팁 카드 렌더링 (클릭 이벤트)
+│   │   │   └── UserInputForm.tsx      # 대화형 입력 폼 (호텔/항공편 정보 수집)
 │   │   ├── types/index.ts
 │   │   ├── App.tsx
 │   │   └── index.css
@@ -166,25 +173,7 @@ python start.py
 
 터미널 3개를 사용하여 개별 실행합니다.
 
-#### macOS / Linux
-
 ```bash
-# 터미널 1 — A2A 에이전트 서버 (포트 8001)
-cd backend
-uv run python a2a_server.py
-
-# 터미널 2 — AG-UI 게이트웨이 (포트 8000)
-cd backend
-uv run python main.py
-
-# 터미널 3 — 프론트엔드 개발 서버 (포트 5173)
-cd frontend
-npm run dev
-```
-
-#### Windows
-
-```powershell
 # 터미널 1 — A2A 에이전트 서버 (포트 8001)
 cd backend
 uv run python a2a_server.py
@@ -202,9 +191,10 @@ npm run dev
 
 ### 테스트 질문 예시
 
-- `도쿄 호텔 추천해줘 (6월 10일~14일, 2명)`
+- `도쿄 호텔 추천해줘 (6월 10일~14일, 2명)` → 호텔 목록 카드 표시, 클릭 시 상세 정보 조회
 - `서울에서 오사카 항공편 검색해줘 (7월 1일, 2명)`
 - `방콕 여행 정보 알려줘`
+- `서울 호텔 알려줘` → 날짜/인원 입력 폼 자동 표시
 
 ---
 
@@ -225,6 +215,7 @@ Gateway → SSE stream:
   data: {"type":"TOOL_CALL_ARGS",  "toolCallId":"...", "delta":"{\"city\":\"도쿄\",...}"}
   data: {"type":"TOOL_CALL_END",   "toolCallId":"..."}
   data: {"type":"STATE_SNAPSHOT",  "snapshot":{"tool":"search_hotels","result":{...}}}
+  data: {"type":"USER_INPUT_REQUEST", "requestId":"...", "inputType":"hotel_booking_details", "fields":[...]}
   data: {"type":"TEXT_MESSAGE_END", "messageId":"..."}
   data: {"type":"STEP_FINISHED", ...}
   data: {"type":"RUN_FINISHED", ...}
@@ -240,13 +231,15 @@ ADK 이벤트를 A2A `TaskArtifactUpdateEvent` 의 파트로 인코딩해 전달
 | `function_call` | `DataPart` | `{ "_agui_event": "TOOL_CALL_START", "id": "...", "name": "search_hotels", "args": {...} }` |
 | `function_response` (종료 신호) | `DataPart` | `{ "_agui_event": "TOOL_CALL_END", "id": "..." }` |
 | `function_response` (결과) | `DataPart` | `{ "tool": "search_hotels", "result": {...} }` |
+| `request_user_input` | `DataPart` | `{ "_agui_event": "USER_INPUT_REQUEST", "requestId": "...", "inputType": "...", "fields": [...] }` |
 
 #### main.py 변환 규칙
 
 ```
 TextPart          → TEXT_MESSAGE_START / CHUNK / END
-DataPart._agui_event == "TOOL_CALL_START" → TOOL_CALL_START + TOOL_CALL_ARGS
-DataPart._agui_event == "TOOL_CALL_END"   → TOOL_CALL_END
+DataPart._agui_event == "TOOL_CALL_START"      → TOOL_CALL_START + TOOL_CALL_ARGS
+DataPart._agui_event == "TOOL_CALL_END"        → TOOL_CALL_END
+DataPart._agui_event == "USER_INPUT_REQUEST"   → USER_INPUT_REQUEST (폼 렌더링)
 DataPart (나머지)  → STATE_SNAPSHOT  (프론트 ToolResultCard 렌더링)
 TaskStatusUpdateEvent (working)    → STEP_STARTED
 TaskStatusUpdateEvent (completed)  → STEP_FINISHED
@@ -320,6 +313,27 @@ for msg in body["messages"]:
         msg["id"] = str(uuid.uuid4())
 ```
 
+### 호텔 클릭 → 상세 조회 흐름 (interruptAndSend)
+
+응답 스트리밍 중에도 호텔 카드를 클릭하면 현재 스트림을 중단하고 즉시 상세 조회 요청을 전송합니다.
+
+```typescript
+// useAGUIChat.ts
+const interruptAndSend = useCallback((userText: string) => {
+  abortRef.current?.abort()       // 기존 SSE 스트림 중단
+  isRunningRef.current = false    // ref 즉시 동기 업데이트
+  setIsRunning(false)
+  setTimeout(() => sendMessage(userText), 0)  // 다음 틱에 새 메시지 전송
+}, [sendMessage])
+
+// App.tsx
+const handleHotelClick = (hotelCode: string, hotelName: string) => {
+  interruptAndSend(`${hotelName}(${hotelCode}) 호텔의 상세 정보를 알려줘`)
+}
+```
+
+> **isRunningRef**: `useState`의 `isRunning`은 비동기로 업데이트되어 stale closure 문제가 발생할 수 있습니다. `useRef`로 동기 상태를 별도 관리하여 해결합니다.
+
 ---
 
 ## 환경 요구사항
@@ -384,6 +398,7 @@ npx playwright test tests/e2e/full-flow.spec.ts
 |---|---|
 | `tests/e2e/full-flow.spec.ts` | 호텔 + 항공편 검색 전체 플로우 |
 | `tests/e2e/hotel-direct-search.spec.ts` | 모든 정보가 포함된 호텔 직접 검색 |
+| `tests/e2e/hotel-detail-click.spec.ts` | 호텔 카드 클릭 → 상세 정보 조회 |
 | `tests/e2e/default-values.spec.ts` | 호텔 폼 기본값 자동 설정 확인 |
 | `tests/e2e/natural-language.spec.ts` | 폼 제출 시 자연어 메시지 변환 |
 | `tests/e2e/flight-form.spec.ts` | 항공편 폼 기본값 및 자동 입력 |
@@ -391,11 +406,6 @@ npx playwright test tests/e2e/full-flow.spec.ts
 | `tests/e2e/form-values.spec.ts` | 호텔 폼 입력값과 제출 상태 확인 |
 | `tests/e2e/assistant-response-check.spec.ts` | 툴 호출/폼 렌더링 응답 검증 |
 | `tests/e2e/response-capture.spec.ts` | `/agui/run` SSE 응답 캡처 검증 |
-
-### 최근 검증 결과
-
-- `npx playwright test`
-- 결과: `11 passed`
 
 ### 아티팩트
 
@@ -412,7 +422,6 @@ npx playwright test tests/e2e/full-flow.spec.ts
 
 **macOS / Linux**
 ```bash
-# 포트 점유 프로세스 확인 및 종료
 lsof -ti :8001 | xargs kill -9
 lsof -ti :8000 | xargs kill -9
 lsof -ti :5173 | xargs kill -9
@@ -420,11 +429,9 @@ lsof -ti :5173 | xargs kill -9
 
 **Windows (PowerShell)**
 ```powershell
-# 포트 점유 PID 확인
 netstat -ano | findstr :8001
 netstat -ano | findstr :8000
 netstat -ano | findstr :5173
-
 # PID로 프로세스 종료 (예: PID 1234)
 taskkill /F /PID 1234
 ```
@@ -435,24 +442,14 @@ taskkill /F /PID 1234
 
 **문제**: 백엔드 또는 프론트엔드 서버가 시작되지 않음
 
-**macOS / Linux**
 ```bash
 # 로그 확인
 cat logs/backend.log
+cat logs/gateway.log
 cat logs/frontend.log
 
 # 수동 실행으로 에러 확인
 cd backend && uv run python a2a_server.py
-```
-
-**Windows (PowerShell)**
-```powershell
-# 로그 확인
-Get-Content logs\backend.log
-Get-Content logs\frontend.log
-
-# 수동 실행으로 에러 확인
-cd backend; uv run python a2a_server.py
 ```
 
 ---
@@ -464,7 +461,6 @@ cd backend; uv run python a2a_server.py
 **macOS / Linux**
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-# 터미널 재시작 또는:
 source ~/.bashrc  # 또는 source ~/.zshrc
 ```
 
@@ -480,24 +476,18 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 **문제**: `GOOGLE_API_KEY not found` 에러
 
-**macOS / Linux**
 ```bash
+# macOS / Linux
 cp backend/.env.example backend/.env
-# backend/.env 파일을 열어 GOOGLE_API_KEY 입력
-```
 
-**Windows**
-```powershell
+# Windows
 copy backend\.env.example backend\.env
-# backend\.env 파일을 열어 GOOGLE_API_KEY 입력
 notepad backend\.env
 ```
 
 ---
 
 ### LLM 응답 없음 또는 타임아웃
-
-**문제**: 메시지 전송 후 응답이 오지 않음
 
 **확인 사항**:
 1. A2A 서버와 AG-UI 게이트웨이가 모두 실행 중인지 확인
@@ -511,22 +501,10 @@ notepad backend\.env
 
 **문제**: E2E 테스트가 실패하거나 타임아웃
 
-**macOS / Linux**
 ```bash
 # 서버 상태 확인
 curl http://localhost:8001/.well-known/agent-card.json
 curl http://localhost:5173
-
-# 서버 재시작
-python start.py
-npm test
-```
-
-**Windows (PowerShell)**
-```powershell
-# 서버 상태 확인
-Invoke-WebRequest http://localhost:8001/.well-known/agent-card.json
-Invoke-WebRequest http://localhost:5173
 
 # 서버 재시작
 python start.py
@@ -543,7 +521,7 @@ npm test
 
 ### 새로운 FunctionTool 추가
 
-1. `backend/agent.py`에 새 함수 정의
+1. `backend/agent.py`에 새 함수 정의 (각 호텔/결과에 고유 코드 포함 권장)
 2. `FunctionTool`로 래핑하여 `tools` 리스트에 추가
 3. LlmAgent `instruction`에 사용법 추가
 4. 프론트엔드에서 결과 렌더링 (필요 시 `ToolResultCard.tsx` 수정)
@@ -554,6 +532,18 @@ npm test
 1. `frontend/src/types/index.ts`에 타입 정의 추가
 2. `frontend/src/hooks/useAGUIChat.ts`에서 이벤트 처리 로직 추가
 3. 필요한 컴포넌트 생성 또는 수정
+
+### 호텔 데이터 확장
+
+`backend/agent.py`의 `hotel_db` 딕셔너리에 도시와 호텔을 추가합니다. 각 호텔에는 반드시 `hotel_code` 필드(형식: `HTL-XXX-000`)를 포함해야 상세 조회 기능이 동작합니다.
+
+```python
+hotel_db = {
+    "새도시": [
+        {"hotel_code": "HTL-NEW-001", "name": "호텔명", "area": "지역", ...},
+    ]
+}
+```
 
 ---
 

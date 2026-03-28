@@ -1,13 +1,32 @@
-# npm
-node_modules
+# ── 환경 변수 (절대 커밋 금지) ──────────────────
+.env
+.env.local
+.env.*.local
 
+# ── Python ──────────────────────────────────────
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+backend/.venv/
+
+# ── Node / npm ───────────────────────────────────
+node_modules/
+
+# ── 에디터 / IDE ─────────────────────────────────
 .vscode
 .claude
 
-# Test screenshots
+# ── 테스트 산출물 ────────────────────────────────
 tests/screenshots/*.png
+tests/e2e/test-results/
+test-results/
+playwright-report/
 
-# Logs
+# ── 로그 ─────────────────────────────────────────
 logs/
-*.logbackend/__pycache__/
-__pycache__/
+*.log
+
+# ── Playwright MCP ───────────────────────────────
+.playwright-mcp/
