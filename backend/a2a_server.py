@@ -44,6 +44,96 @@ logger = logging.getLogger(__name__)
 APP_NAME = "travel"
 USER_ID = "web_user"
 
+
+# ──────────────────────────────────────────────
+# TravelContext 추출 헬퍼
+# ──────────────────────────────────────────────
+
+def _extract_travel_context(tool_name: str, args: dict) -> dict:
+    """function_call args에서 TravelContext를 추출합니다."""
+    ctx: dict = {
+        "destination": None,
+        "origin": None,
+        "check_in": None,
+        "check_out": None,
+        "nights": None,
+        "guests": None,
+        "trip_type": None,
+    }
+
+    if tool_name == "search_hotels":
+        ctx["destination"] = args.get("city")
+        ctx["check_in"] = args.get("check_in")
+        ctx["check_out"] = args.get("check_out")
+        ctx["guests"] = args.get("guests")
+        if ctx["check_in"] and ctx["check_out"]:
+            try:
+                from datetime import date
+                ci = date.fromisoformat(ctx["check_in"])
+                co = date.fromisoformat(ctx["check_out"])
+                ctx["nights"] = (co - ci).days
+            except Exception:
+                pass
+
+    elif tool_name == "search_flights":
+        ctx["origin"] = args.get("origin")
+        ctx["destination"] = args.get("destination")
+        ctx["check_in"] = args.get("departure_date")
+        ctx["guests"] = args.get("passengers")
+        ctx["trip_type"] = "round_trip" if args.get("return_date") else "one_way"
+
+    elif tool_name == "get_hotel_detail":
+        pass  # hotel_code만 있음, travel context 없음
+
+    elif tool_name == "get_travel_tips":
+        ctx["destination"] = args.get("destination")
+
+    elif tool_name == "request_user_input":
+        input_type = args.get("input_type", "")
+        context_val = args.get("context", "")
+        if input_type == "hotel_booking_details" and context_val:
+            ctx["destination"] = context_val
+        elif input_type == "flight_booking_details" and context_val:
+            parts = context_val.split("|")
+            if len(parts) >= 2:
+                ctx["origin"] = parts[0].strip()
+                ctx["destination"] = parts[1].strip()
+
+    return ctx
+
+
+def _extract_agent_status(tool_name: str, args: dict) -> dict:
+    """tool_name으로부터 agent_status를 추출합니다."""
+    intent_map = {
+        "search_hotels": "searching",
+        "search_flights": "searching",
+        "get_hotel_detail": "presenting_results",
+        "get_travel_tips": "presenting_results",
+        "request_user_input": None,  # input_type으로 결정
+    }
+
+    missing_fields_map = {
+        "hotel_booking_details": ["check_in", "check_out", "guests"],
+        "flight_booking_details": ["origin", "destination", "departure_date", "passengers"],
+    }
+
+    intent = intent_map.get(tool_name, "idle")
+    missing: list = []
+
+    if tool_name == "request_user_input":
+        input_type = args.get("input_type", "")
+        if "hotel" in input_type:
+            intent = "collecting_hotel_params"
+        else:
+            intent = "collecting_flight_params"
+        missing = missing_fields_map.get(input_type, [])
+
+    return {
+        "current_intent": intent or "idle",
+        "missing_fields": missing,
+        "active_tool": tool_name,
+    }
+
 # ──────────────────────────────────────────────
 # ADK 에이전트 & 런너 초기화
 # ──────────────────────────────────────────────
@@ -171,12 +261,33 @@ class ADKAgentExecutor(AgentExecutor):
                             )
                         )
 
-                    # 함수 호출 (Tool Call 시작) → TOOL_CALL_START / TOOL_CALL_ARGS 용 DataPart
+                    # 함수 호출 (Tool Call 시작) → agent_state STATE_SNAPSHOT 먼저 발행 후 TOOL_CALL_START
                     elif hasattr(part, "function_call") and part.function_call:
                         fc = part.function_call
                         tc_id = str(uuid.uuid4())
                         tool_call_map[fc.name] = tc_id
                         args_dict = dict(fc.args) if fc.args else {}
+
+                        # agent_state STATE_SNAPSHOT 먼저 발행 (TOOL_CALL_START 전)
+                        travel_ctx = _extract_travel_context(fc.name, args_dict)
+                        agent_status = _extract_agent_status(fc.name, args_dict)
+                        await event_queue.enqueue_event(
+                            TaskArtifactUpdateEvent(
+                                task_id=task_id,
+                                context_id=context_id,
+                                artifact=Artifact(
+                                    artifact_id=str(uuid.uuid4()),
+                                    parts=[Part(root=DataPart(data={
+                                        "snapshot_type": "agent_state",
+                                        "travel_context": travel_ctx,
+                                        "agent_status": agent_status,
+                                    }))],
+                                ),
+                                append=False,
+                                last_chunk=False,
+                            )
+                        )
+
                         await event_queue.enqueue_event(
                             TaskArtifactUpdateEvent(
                                 task_id=task_id,
@@ -246,7 +357,7 @@ class ADKAgentExecutor(AgentExecutor):
                                     )
                                 )
                             else:
-                                # 일반 도구 결과 → STATE_SNAPSHOT
+                                # 일반 도구 결과 → STATE_SNAPSHOT (snapshot_type: "tool_result" 포함)
                                 await event_queue.enqueue_event(
                                     TaskArtifactUpdateEvent(
                                         task_id=task_id,
@@ -254,6 +365,7 @@ class ADKAgentExecutor(AgentExecutor):
                                         artifact=Artifact(
                                             artifact_id=str(uuid.uuid4()),
                                             parts=[Part(root=DataPart(data={
+                                                "snapshot_type": "tool_result",
                                                 "tool": fr.name,
                                                 "result": response_data,
                                             }))],

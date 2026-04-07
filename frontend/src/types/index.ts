@@ -96,8 +96,62 @@ export interface FormField {
   default?: string  // 기본값
 }
 
+// ── 양방향 상태 동기화 타입 ───────────────────────
+
+export interface TravelContext {
+  destination: string | null
+  origin: string | null
+  check_in: string | null
+  check_out: string | null
+  nights: number | null
+  guests: number | null
+  trip_type: 'round_trip' | 'one_way' | null
+}
+
+export interface AgentStatus {
+  current_intent: 'collecting_hotel_params' | 'collecting_flight_params' | 'searching' | 'presenting_results' | 'awaiting_input' | 'idle'
+  missing_fields: string[]
+  active_tool: string | null
+}
+
+export interface AgentState {
+  travel_context: TravelContext
+  agent_status: AgentStatus
+  last_updated: number
+}
+
+export interface UIContext {
+  selected_hotel_code: string | null
+  selected_flight_id: string | null
+  current_view: 'chat' | 'hotel_list' | 'hotel_detail' | 'flight_list'
+}
+
+export interface SessionPrefs {
+  currency: 'KRW' | 'USD' | 'JPY'
+  language: 'ko' | 'en' | 'ja'
+}
+
+export interface ClientState {
+  ui_context: UIContext
+  session_prefs: SessionPrefs
+}
+
 // 도구 결과 스냅샷
-export interface ToolSnapshot {
+export interface ToolResultSnapshot {
+  snapshot_type: 'tool_result'
+  tool: string
+  result: HotelSearchResult | FlightSearchResult | TravelTipsResult | HotelDetailResult | Record<string, unknown>
+}
+
+export interface AgentStateSnapshot {
+  snapshot_type: 'agent_state'
+  travel_context: TravelContext
+  agent_status: AgentStatus
+}
+
+// 하위 호환: snapshot_type 없는 기존 구조 포함
+export type ToolSnapshot = ToolResultSnapshot | AgentStateSnapshot | {
+  snapshot_type?: undefined
   tool: string
   result: HotelSearchResult | FlightSearchResult | TravelTipsResult | HotelDetailResult | Record<string, unknown>
 }
@@ -252,7 +306,7 @@ export interface UserInputRequest {
 export interface RunAgentInput {
   threadId: string
   runId: string
-  state: Record<string, unknown>
+  state: ClientState | Record<string, unknown>
   messages: Array<{ role: string; content: string }>
   tools: unknown[]
   context: unknown[]

@@ -46,10 +46,7 @@
   display: flex;
   flex-direction: column;
   height: 100dvh;
-  max-width: 860px;
-  margin: 0 auto;
   background: var(--white);
-  box-shadow: 0 0 60px rgba(0,0,0,0.08);
 }
 
 /* ── Header ──────────────────────────────── */
@@ -569,7 +566,152 @@
   width: 1px; height: 32px; background: var(--gray-200); flex-shrink: 0;
 }
 
+/* ── State Panel ─────────────────────────── */
+.state-panel {
+  width: 320px;
+  flex-shrink: 0;
+  background: var(--navy);
+  border-left: 1px solid rgba(201,168,76,0.2);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+.state-panel::-webkit-scrollbar { width: 4px; }
+.state-panel::-webkit-scrollbar-thumb { background: rgba(201,168,76,0.2); border-radius: 2px; }
+
+.sp-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(201,168,76,0.2);
+}
+.sp-title {
+  font-size: 12px; font-weight: 700; letter-spacing: 1.5px;
+  color: var(--gold-light); text-transform: uppercase;
+}
+.sp-close-btn {
+  background: none; border: none; color: var(--gold-light);
+  cursor: pointer; font-size: 14px; opacity: 0.6;
+  display: none; /* shown via media query */
+}
+
+.sp-section { padding: 14px 16px; }
+
+.sp-section-header {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 10px;
+}
+.sp-section-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  color: var(--gold); text-transform: uppercase;
+}
+.sp-arrow {
+  font-size: 16px; color: var(--gold); font-weight: 700;
+  line-height: 1;
+}
+.sp-arrow-pulse {
+  animation: sp-pulse 0.4s ease-in-out 2;
+}
+@keyframes sp-pulse {
+  0%,100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.5); opacity: 0.5; }
+}
+
+.sp-subsection-title {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.8px;
+  color: rgba(201,168,76,0.6); text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.sp-fields { display: flex; flex-direction: column; gap: 3px; }
+
+.sp-field {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 8px; border-radius: var(--radius-sm);
+  transition: background 0.15s;
+}
+.sp-field-label {
+  font-size: 11px; color: rgba(255,255,255,0.4);
+  font-family: 'Courier New', monospace; min-width: 90px;
+}
+.sp-field-value {
+  font-size: 11px; color: var(--white); font-weight: 500;
+  text-align: right; word-break: break-all;
+  max-width: 140px;
+}
+
+/* 서버→클라이언트 하이라이트 (녹색) */
+.sp-highlight-server {
+  animation: sp-flash-server 1.5s ease-out;
+}
+@keyframes sp-flash-server {
+  0% { background: rgba(45,122,79,0.6); }
+  100% { background: transparent; }
+}
+
+/* 클라이언트→서버 하이라이트 (파란색) */
+.sp-highlight-client {
+  animation: sp-flash-client 1.5s ease-out;
+}
+@keyframes sp-flash-client {
+  0% { background: rgba(55,138,221,0.5); }
+  100% { background: transparent; }
+}
+
+.sp-divider {
+  height: 1px; background: rgba(201,168,76,0.15);
+  margin: 0 16px;
+}
+
+/* 토글 버튼 (기본 숨김, 소형 화면에서 표시) */
+.sp-toggle-btn {
+  display: none;
+  position: fixed; bottom: 80px; right: 12px;
+  background: var(--navy); color: var(--gold);
+  border: 1px solid rgba(201,168,76,0.4);
+  border-radius: var(--radius-md);
+  padding: 8px 10px; cursor: pointer;
+  font-size: 12px; font-weight: 700; z-index: 100;
+  box-shadow: var(--shadow-md);
+  gap: 4px; align-items: center;
+}
+.sp-toggle-label { font-size: 10px; letter-spacing: 0.5px; }
+
+/* 패널 열림/닫힘 (데스크탑에서는 항상 열림) */
+.state-panel.sp-closed {
+  display: none;
+}
+.state-panel.sp-open {
+  display: flex;
+}
+
+/* ── App 레이아웃 (StatPanel 포함) ───────── */
+.app-layout {
+  display: flex;
+  flex-direction: row;
+  height: 100dvh;
+  max-width: 1180px;
+  margin: 0 auto;
+  background: var(--white);
+  box-shadow: 0 0 60px rgba(0,0,0,0.08);
+}
+.chat-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
 /* ── Responsive ──────────────────────────── */
+@media (max-width: 1024px) {
+  .state-panel { position: fixed; right: 0; top: 0; height: 100dvh; z-index: 200; }
+  .state-panel.sp-closed { display: none; }
+  .state-panel.sp-open { display: flex; }
+  .sp-toggle-btn { display: flex; }
+  .sp-close-btn { display: block; }
+}
+
 @media (max-width: 600px) {
   .hotel-grid { grid-template-columns: 1fr 1fr; }
   .tips-grid { grid-template-columns: 1fr; }

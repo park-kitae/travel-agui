@@ -56,6 +56,12 @@ graph TB
     Agent -->|ADK Events| ADKExecutor
     ADKExecutor -->|A2A Events| A2AServer
 
+    subgraph "Backend Testing (Pytest)"
+        BT[Backend Tests]
+        BT -->|Test /agui/run| Gateway
+        BT -->|Test Streaming| A2AServer
+    end
+
     style UI fill:#e1f5ff
     style Gateway fill:#fff4e1
     style A2AServer fill:#e8f5e9
@@ -70,6 +76,8 @@ graph TB
 | **AG-UI Gateway** | AG-UI Protocol | 8000 | A2A ↔ AG-UI 이벤트 변환 |
 | **A2A Server** | A2A Protocol | 8001 | ADK 에이전트를 A2A로 노출 |
 | **ADK Agent** | Google ADK | - | LLM + FunctionTools 실행 |
+| **Backend Tests** | Pytest / Async | - | SSE 스트림 및 API 로직 검증 |
+| **E2E Tests** | Playwright | - | 프론트엔드-백엔드 통합 시나리오 검증 |
 
 ---
 

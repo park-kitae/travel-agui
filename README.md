@@ -55,38 +55,23 @@ travel-agui/
 ├── logs/                 # 서버 로그 파일 (gitignore)
 ├── backend/
 │   ├── agent.py          # ADK LlmAgent + FunctionTool 정의
-│   │                     #   - search_hotels / search_flights
-│   │                     #   - get_hotel_detail / get_travel_tips
-│   │                     #   - request_user_input
 │   ├── a2a_server.py     # A2A 에이전트 서버 (포트 8001)
-│   │                     #   ADKAgentExecutor: ADK 이벤트 → A2A 이벤트 변환
 │   ├── main.py           # AG-UI 게이트웨이 (포트 8000)
-│   │                     #   A2AClient: A2A 이벤트 → AG-UI 이벤트 변환
+│   ├── tests/            # 백엔드 Pytest 테스트 스위트
+│   │   ├── test_a2a_stream.py # A2A 스트리밍 검증
+│   │   └── test_agui_run.py   # AG-UI /agui/run 엔드포인트 검증
 │   ├── pyproject.toml    # uv 프로젝트 설정 및 의존성
-│   ├── .env.example      # 환경 변수 템플릿
-│   └── .venv/            # uv가 자동 생성하는 가상환경 (gitignore)
+│   └── .env.example      # 환경 변수 템플릿
 ├── frontend/
-│   ├── src/
-│   │   ├── hooks/
-│   │   │   └── useAGUIChat.ts        # AG-UI SSE 스트림 처리 훅
-│   │   │                             #   - interruptAndSend: 스트림 중단 후 새 요청
-│   │   │                             #   - isRunningRef: stale closure 방지
-│   │   ├── components/
-│   │   │   ├── ChatMessageBubble.tsx
-│   │   │   ├── ToolCallIndicator.tsx  # 실시간 툴 실행 상태 표시
-│   │   │   ├── ToolResultCard.tsx     # 호텔/항공/여행팁 카드 렌더링 (클릭 이벤트)
-│   │   │   └── UserInputForm.tsx      # 대화형 입력 폼 (호텔/항공편 정보 수집)
-│   │   ├── types/index.ts
-│   │   ├── App.tsx
-│   │   └── index.css
+│   ├── src/              # 프론트엔드 소스 코드
+│   ├── tests/            # Playwright Test 기반 E2E 스위트 (이동됨)
+│   │   ├── e2e/          # 서비스별 E2E 시나리오
+│   │   └── README.md
 │   ├── vite.config.ts    # /agui → :8000 프록시
-│   ├── package.json
-│   └── node_modules/
-└── tests/
-    ├── e2e/              # Playwright Test 기반 E2E 스위트
-    │   ├── *.spec.ts     # 호텔/항공편/폼/응답 검증 시나리오
-    │   └── utils/        # 공통 헬퍼
-    └── screenshots/      # 테스트 스크린샷 (gitignore)
+│   └── package.json
+└── openspec/             # OpenSpec 변경 관리 및 스키마
+    ├── changes/          # 변경 이력 관리
+    └── schemas/          # spec-driven-with-tests 커스텀 스키마
 ```
 
 ---
@@ -366,46 +351,47 @@ uv add <패키지명>
 
 ---
 
-## E2E 테스트
+## 테스트 실행
 
-현재 E2E 테스트는 모두 Playwright Test Framework 기반으로 정리되어 있습니다.
-
-### 테스트 실행
+### 1. 백엔드 유닛/통합 테스트 (Pytest)
 
 ```bash
-# 서버가 실행 중이어야 함
-python start.py
+cd backend
+uv run pytest
+```
+
+### 2. 프론트엔드 E2E 테스트 (Playwright)
+
+현재 E2E 테스트는 `frontend/` 디렉토리 내에서 실행됩니다.
+
+```bash
+# 서버가 실행 중이어야 함 (python start.py)
+cd frontend
 
 # 전체 E2E 실행
 npm test
-
-# 동일한 E2E 명령 별칭
-npm run test:e2e
 
 # 브라우저를 보면서 실행
 npm run test:e2e:headed
 
 # Playwright UI 모드
 npm run test:ui
-
-# 특정 테스트만 실행
-npx playwright test tests/e2e/full-flow.spec.ts
 ```
 
-### 주요 테스트 시나리오
+### 주요 테스트 시나리오 (frontend/tests/e2e/)
 
 | 테스트 파일 | 목적 |
 |---|---|
-| `tests/e2e/full-flow.spec.ts` | 호텔 + 항공편 검색 전체 플로우 |
-| `tests/e2e/hotel-direct-search.spec.ts` | 모든 정보가 포함된 호텔 직접 검색 |
-| `tests/e2e/hotel-detail-click.spec.ts` | 호텔 카드 클릭 → 상세 정보 조회 |
-| `tests/e2e/default-values.spec.ts` | 호텔 폼 기본값 자동 설정 확인 |
-| `tests/e2e/natural-language.spec.ts` | 폼 제출 시 자연어 메시지 변환 |
-| `tests/e2e/flight-form.spec.ts` | 항공편 폼 기본값 및 자동 입력 |
-| `tests/e2e/form-submit.spec.ts` | 호텔 폼 제출 후 결과 표시 |
-| `tests/e2e/form-values.spec.ts` | 호텔 폼 입력값과 제출 상태 확인 |
-| `tests/e2e/assistant-response-check.spec.ts` | 툴 호출/폼 렌더링 응답 검증 |
-| `tests/e2e/response-capture.spec.ts` | `/agui/run` SSE 응답 캡처 검증 |
+| `frontend/tests/e2e/full-flow.spec.ts` | 호텔 + 항공편 검색 전체 플로우 |
+| `frontend/tests/e2e/hotel-direct-search.spec.ts` | 모든 정보가 포함된 호텔 직접 검색 |
+| `frontend/tests/e2e/hotel-detail-click.spec.ts` | 호텔 카드 클릭 → 상세 정보 조회 |
+| `frontend/tests/e2e/default-values.spec.ts` | 호텔 폼 기본값 자동 설정 확인 |
+| `frontend/tests/e2e/natural-language.spec.ts` | 폼 제출 시 자연어 메시지 변환 |
+| `frontend/tests/e2e/flight-form.spec.ts` | 항공편 폼 기본값 및 자동 입력 |
+| `frontend/tests/e2e/form-submit.spec.ts` | 호텔 폼 제출 후 결과 표시 |
+| `frontend/tests/e2e/form-values.spec.ts` | 호텔 폼 입력값과 제출 상태 확인 |
+| `frontend/tests/e2e/assistant-response-check.spec.ts` | 툴 호출/폼 렌더링 응답 검증 |
+| `frontend/tests/e2e/response-capture.spec.ts` | `/agui/run` SSE 응답 캡처 검증 |
 
 ### 아티팩트
 

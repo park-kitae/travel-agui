@@ -272,6 +272,12 @@ async def run_agent(request: Request):
     if not user_message:
         user_message = "안녕하세요"
 
+    # client_state 추출 (RunAgentInput.state 필드, 없으면 빈 dict)
+    client_state: dict = {}
+    raw_state = body.get("state")
+    if isinstance(raw_state, dict) and raw_state:
+        client_state = raw_state
+
     logger.info(f"[{thread_id}] 사용자 입력: {user_message[:80]}")
 
     async def event_stream() -> AsyncGenerator[str, None]:
@@ -292,16 +298,20 @@ async def run_agent(request: Request):
                 agent_card = AgentCard.model_validate(card_resp.json())
                 a2a_client = A2AClient(httpx_client=http_client, agent_card=agent_card)
 
-                # 3. A2A 스트리밍 요청
+                # 3. A2A 스트리밍 요청 (client_state를 metadata로 전달)
+                msg_kwargs: dict = {
+                    "role": Role.user,
+                    "parts": [Part(root=TextPart(text=user_message))],
+                    "message_id": str(uuid.uuid4()),
+                    "context_id": thread_id,
+                }
+                if client_state:
+                    msg_kwargs["metadata"] = {"client_state": client_state}
+
                 a2a_request = SendStreamingMessageRequest(
                     id=str(uuid.uuid4()),
                     params=MessageSendParams(
-                        message=Message(
-                            role=Role.user,
-                            parts=[Part(root=TextPart(text=user_message))],
-                            message_id=str(uuid.uuid4()),
-                            context_id=thread_id,
-                        ),
+                        message=Message(**msg_kwargs),
                     ),
                 )
 

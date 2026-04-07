@@ -648,14 +648,20 @@ def test_search_hotels():
     assert len(result["hotels"]) > 0
 ```
 
-**실행**:
+백엔드 로직의 정확성을 검증하기 위해 `pytest`와 `pytest-asyncio`를 사용합니다. 특히 SSE 스트리밍 응답이 올바른 규격으로 전달되는지 확인합니다.
+
+**테스트 파일 구조**:
+- `backend/tests/conftest.py`: 테스트용 클라이언트 및 환경 설정
+- `backend/tests/test_a2a_stream.py`: A2A 서버의 스트리밍 로직 검증
+- `backend/tests/test_agui_run.py`: `/agui/run` 엔드포인트의 통합 검증
+
+**실행 방법**:
 ```bash
 cd backend
-source .venv/bin/activate
-pytest test_agent.py
+uv run pytest
 ```
 
-### 6-1. Playwright E2E 회귀 테스트
+#### 6-2. Playwright E2E 회귀 테스트
 
 에이전트 instruction, tool schema, 응답 포맷을 수정했다면 프런트와의 연결까지 함께 검증해야 합니다.
 
@@ -668,7 +674,8 @@ pytest test_agent.py
 
 **실행**:
 ```bash
-# 루트에서 실행, 서버는 미리 실행되어 있어야 함
+# 프론트엔드 디렉토리로 이동 후 실행 (서버는 미리 실행되어 있어야 함)
+cd frontend
 npm test
 
 # 특정 시나리오만 실행
