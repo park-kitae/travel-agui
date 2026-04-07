@@ -1,0 +1,70 @@
+name: spec-driven-with-tests
+version: 1
+description: |
+  spec-driven 워크플로우에 tests 단계를 추가한 커스텀 스키마.
+  tasks 완료 후 frontend/backend 구분된 테스트 코드를 생성하고,
+  시나리오별 체크리스트로 테스트 실행 여부를 추적한다.
+
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: 변경 제안서 — 왜 이 변경이 필요한지 설명
+    template: proposal.md
+    instruction: |
+      변경이 필요한 이유(WHY)를 설명하는 제안서를 작성하세요.
+      문제 정의, 변경 범위, 영향도를 포함합니다.
+    requires: []
+
+  - id: specs
+    generates: specs/**/*.md
+    description: 기능 명세 — 요구사항과 시나리오 정의
+    template: specs.md
+    instruction: |
+      proposal의 각 기능을 testable한 요구사항으로 변환하세요.
+      각 요구사항에 WHEN/THEN 형식의 시나리오를 포함합니다.
+    requires:
+      - proposal
+
+  - id: design
+    generates: design.md
+    description: 기술 설계 — 구현 방법과 아키텍처 결정
+    template: design.md
+    instruction: |
+      명세를 구현하기 위한 기술 설계를 작성하세요.
+      아키텍처 결정 사항, 대안 비교, 리스크를 포함합니다.
+    requires:
+      - specs
+
+  - id: tasks
+    generates: tasks.md
+    description: 구현 체크리스트 — 작업 항목과 진행 추적
+    template: tasks.md
+    instruction: |
+      설계를 기반으로 구현 작업 항목을 체크리스트로 작성하세요.
+      의존성 순서대로 정렬하고, 각 항목은 한 세션 내 완료 가능한 크기로 분리합니다.
+    requires:
+      - design
+
+  - id: tests
+    generates: tests.md
+    description: 테스트 계획 — frontend/backend 구분, 시나리오별 체크리스트
+    template: tests.md
+    instruction: |
+      specs의 시나리오와 tasks의 구현 항목을 기반으로 테스트 계획을 작성하세요.
+
+      규칙:
+      1. **frontend/backend 구분**: 각 섹션을 명확히 분리하세요.
+      2. **테스트 코드 위치**: 각 테스트 파일의 경로를 명시하세요.
+         - Frontend: `frontend/tests/e2e/<change-name>/` 하위
+         - Backend: `backend/tests/<change-name>/` 하위
+         여기서 <change-name>은 이 변경 작업의 이름(폴더명)입니다.
+      3. **시나리오별 체크리스트**: 각 테스트 시나리오를 `- [ ]` 체크박스로 작성하세요.
+         테스트 실행 후 통과하면 `- [x]`로 마킹합니다.
+      4. **테스트 코드 파일명**: 시나리오를 반영하는 명확한 네이밍을 사용하세요.
+      5. **실행 명령어**: 각 섹션에 테스트 실행 명령어를 포함하세요.
+    requires:
+      - tasks
+
+apply:
+  requires: [tests]
+  tracks: tasks.md

@@ -1,0 +1,23 @@
+schema: spec-driven-with-tests
+
+context: |
+  Language: 한국어
+  Write in Korean, but:
+  - Keep technical terms like "API", "REST", "GraphQL" in English
+  - Code examples and file paths remain in English
+
+  Tech stack:
+  - Frontend: React + TypeScript + Vite (frontend/)
+  - Backend: FastAPI + Python 3.11 + uv (backend/)
+  - Frontend test: Playwright (frontend/tests/e2e/)
+  - Backend test: pytest + pytest-asyncio (backend/tests/)
+
+rules:
+  tests:
+    - Frontend와 Backend 테스트를 반드시 구분하여 작성할 것
+    - 테스트 코드는 각각 변경 작업 이름의 하위 폴더에 생성할 것
+    - "backend/tests/<change-name>/" 와 "frontend/tests/e2e/<change-name>/" 구조를 따를 것
+    - 각 시나리오를 "- [ ]" 체크박스로 작성하고, 실행 후 통과 시 "- [x]"로 마킹할 것
+    - 테스트 요약 테이블을 반드시 포함할 것
+  tasks:
+    - 작업 항목은 한 세션 내 완료 가능한 크기로 분리할 것
