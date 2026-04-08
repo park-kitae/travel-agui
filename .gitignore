@@ -13,6 +13,7 @@ backend/.venv/
 
 # ── Node / npm ───────────────────────────────────
 node_modules/
+frontend/dist/
 
 # ── 에디터 / IDE ─────────────────────────────────
 .vscode
