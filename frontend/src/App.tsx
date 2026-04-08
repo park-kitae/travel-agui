@@ -13,7 +13,8 @@ const SUGGESTIONS = [
 export default function App() {
   const { messages, isRunning, error, agentState, uiContext, updateUiContext, sendMessage, interruptAndSend, stopStreaming, clearMessages, markFormSubmitted } = useAGUIChat()
   const [input, setInput] = useState('')
-  const [statePanelOpen, setStatePanelOpen] = useState(true)
+  // 모바일(<1024px)에서는 기본으로 닫음, 데스크톱에서는 열림
+  const [statePanelOpen, setStatePanelOpen] = useState(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 

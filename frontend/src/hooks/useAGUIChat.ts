@@ -75,11 +75,12 @@ export function useAGUIChat() {
       .map(m => ({ role: m.role, content: m.content }))
     history.push({ role: 'user', content: userText.trim() })
 
-    // 4. RunAgentInput 구성 (uiContext를 state에 포함)
+    // 4. RunAgentInput 구성 (uiContext + travel_context를 state에 포함)
     const runId = generateId()
     const clientState: ClientState = {
       ui_context: uiContext,
       session_prefs: { currency: 'KRW', language: 'ko' },
+      travel_context: agentState?.travel_context ?? null,  // 호텔↔항공 날짜 재사용용
     }
     const input: RunAgentInput = {
       threadId: threadIdRef.current,
@@ -147,7 +148,7 @@ export function useAGUIChat() {
       setIsRunning(false)
       isRunningRef.current = false
     }
-  }, [messages, updateMessage])
+  }, [messages, agentState, uiContext, updateMessage])
 
   const stopStreaming = useCallback(() => {
     abortRef.current?.abort()
@@ -273,11 +274,27 @@ function handleEvent(
       const snapshot = event.snapshot as ToolSnapshot
       if ((snapshot as AgentStateSnapshot).snapshot_type === 'agent_state') {
         const s = snapshot as AgentStateSnapshot
-        setAgentState(prev => ({
-          travel_context: { ...(prev?.travel_context ?? {}), ...s.travel_context } as AgentState['travel_context'],
-          agent_status: s.agent_status,
-          last_updated: Date.now(),
-        }))
+        // 도착지·날짜·인원 등 핵심 여행 정보는 null로 덮어쓰지 않음
+        const PERSISTENT_FIELDS: (keyof typeof s.travel_context)[] = [
+          'destination', 'check_in', 'check_out', 'nights', 'guests', 'origin', 'trip_type',
+        ]
+        setAgentState(prev => {
+          const prevTc = prev?.travel_context ?? {} as Partial<AgentState['travel_context']>
+          const merged = { ...prevTc } as Record<string, unknown>
+          for (const [key, value] of Object.entries(s.travel_context)) {
+            const isPersistent = PERSISTENT_FIELDS.includes(key as keyof typeof s.travel_context)
+            if (isPersistent && value === null && prevTc[key as keyof typeof prevTc] != null) {
+              // 이미 값이 있는 핵심 필드는 null로 초기화하지 않음
+              continue
+            }
+            merged[key] = value
+          }
+          return {
+            travel_context: merged as AgentState['travel_context'],
+            agent_status: s.agent_status,
+            last_updated: Date.now(),
+          }
+        })
       } else {
         // tool_result 또는 기존 구조 → 메시지 snapshots에 추가
         updateMessage(assistantId, m => ({

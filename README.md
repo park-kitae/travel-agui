@@ -8,10 +8,13 @@ React + Vite 프론트엔드와 Google ADK 에이전트를 **A2A → AG-UI** 이
 - **호텔 상세 조회**: 호텔 카드 클릭 시 객실 정보, 편의시설, 위치 등 상세 정보 표시
 - **항공편 검색**: 출발지, 목적지, 날짜, 인원수로 왕복 항공편 검색
 - **여행 정보**: 목적지별 여행 팁 및 관광 정보 제공
-- **사용자 입력 폼**: 정보가 부족할 때 대화형 폼으로 필요한 정보 수집
+- **사용자 입력 폼**: 정보가 부족할 때 대화형 폼으로 필요한 정보 수집 (기존 날짜·인원 자동 pre-fill)
+- **여행 컨텍스트 재사용**: 호텔 조회 후 항공편 문의 시(또는 반대) 기존 날짜·인원을 자동으로 폼에 적용
+- **핵심 상태 보호**: 목적지·날짜·인원 등 핵심 여행 정보는 호텔 상세 조회 등 부분 업데이트에 의해 초기화되지 않음
 - **실시간 스트리밍**: SSE를 통한 에이전트 응답 실시간 렌더링
 - **툴 실행 표시**: 호텔/항공편 검색 진행 상태 실시간 표시
 - **스트림 인터럽트**: 응답 중에도 호텔 클릭 시 현재 스트림을 중단하고 즉시 새 요청 전송
+- **State Flow 패널**: 핵심 여행 정보(고정) → 클라이언트 상태 → 에이전트 상태 순으로 한눈에 확인
 
 ---
 
@@ -38,10 +41,10 @@ ADK Runner → Gemini LLM + FunctionTools
 
 | 레이어 | 파일 | 역할 |
 |---|---|---|
-| **React Client** | `frontend/src/` | AG-UI SSE 수신 → 실시간 UI 렌더링 |
-| **AG-UI Gateway** | `backend/main.py` | RunAgentInput 수신 → A2A 요청 → AG-UI 이벤트 변환 |
-| **A2A Server** | `backend/a2a_server.py` | ADK 에이전트를 A2A 프로토콜로 노출 |
-| **ADK Agent** | `backend/agent.py` | LlmAgent + FunctionTool 정의 |
+| **React Client** | `frontend/src/` | AG-UI SSE 수신 → 실시간 UI 렌더링, travel_context 포함 전송 |
+| **AG-UI Gateway** | `backend/main.py` | RunAgentInput 수신 → travel_context 주입 → A2A 요청 → AG-UI 이벤트 변환 |
+| **A2A Server** | `backend/a2a_server.py` | ADK 에이전트를 A2A 프로토콜로 노출, agent_state STATE_SNAPSHOT 발행 |
+| **ADK Agent** | `backend/agent.py` | LlmAgent + FunctionTool 정의, 여행 컨텍스트 재사용 프롬프트 |
 
 ---
 
@@ -217,6 +220,7 @@ ADK 이벤트를 A2A `TaskArtifactUpdateEvent` 의 파트로 인코딩해 전달
 | `function_response` (종료 신호) | `DataPart` | `{ "_agui_event": "TOOL_CALL_END", "id": "..." }` |
 | `function_response` (결과) | `DataPart` | `{ "tool": "search_hotels", "result": {...} }` |
 | `request_user_input` | `DataPart` | `{ "_agui_event": "USER_INPUT_REQUEST", "requestId": "...", "inputType": "...", "fields": [...] }` |
+| `function_call` (agent_state) | `DataPart` | `{ "snapshot_type": "agent_state", "travel_context": {...}, "agent_status": {...} }` |
 
 #### main.py 변환 규칙
 
@@ -297,6 +301,26 @@ for msg in body["messages"]:
     if isinstance(msg, dict) and "id" not in msg:
         msg["id"] = str(uuid.uuid4())
 ```
+
+### 양방향 상태 동기화 (travel_context)
+
+프론트엔드는 매 요청마다 누적된 `agentState.travel_context`를 서버로 전송합니다. 서버는 이를 파싱해 사용자 메시지 앞에 컨텍스트 블록으로 주입합니다.
+
+```
+[현재 여행 컨텍스트 - 이미 확인된 정보]
+- 목적지: 도쿄
+- 체크인/출발일: 2026-06-10
+- 체크아웃/귀국일: 2026-06-14
+- 인원: 2명
+
+사용자 요청: 항공편도 알려줘
+```
+
+에이전트는 이 컨텍스트를 읽고 날짜·인원을 재사용해 `search_flights` 또는 `request_user_input` 에 자동 반영합니다.
+
+**핵심 상태 보호**: `STATE_SNAPSHOT` 이벤트 수신 시 `destination`, `check_in`, `check_out`, `nights`, `guests`, `origin`, `trip_type` 필드는 null로 덮어쓰지 않습니다. 호텔 상세 조회처럼 부분적인 상태 업데이트가 오더라도 기존 여행 정보가 유지됩니다.
+
+---
 
 ### 호텔 클릭 → 상세 조회 흐름 (interruptAndSend)
 

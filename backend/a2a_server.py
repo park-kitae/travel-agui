@@ -382,7 +382,7 @@ class ADKAgentExecutor(AgentExecutor):
                     task_id=task_id,
                     context_id=context_id,
                     final=True,
-                    status=TaskStatus(state=TaskState.failed, message={"error": str(e)}),
+                    status=TaskStatus(state=TaskState.failed),
                 )
             )
             return

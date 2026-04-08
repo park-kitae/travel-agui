@@ -623,6 +623,19 @@
   margin-bottom: 6px;
 }
 
+.sp-pin-icon { font-size: 13px; line-height: 1; }
+
+.sp-badge {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
+  padding: 1px 5px; border-radius: 3px;
+  text-transform: uppercase; margin-left: auto;
+}
+.sp-badge-stable {
+  background: rgba(201,168,76,0.18);
+  color: var(--gold);
+  border: 1px solid rgba(201,168,76,0.35);
+}
+
 .sp-fields { display: flex; flex-direction: column; gap: 3px; }
 
 .sp-field {

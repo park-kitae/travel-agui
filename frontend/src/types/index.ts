@@ -134,6 +134,7 @@ export interface SessionPrefs {
 export interface ClientState {
   ui_context: UIContext
   session_prefs: SessionPrefs
+  travel_context?: Partial<TravelContext> | null  // 누적된 여행 컨텍스트 (호텔↔항공 날짜 재사용)
 }
 
 // 도구 결과 스냅샷

@@ -101,61 +101,60 @@ export function StatePanel({ agentState, uiContext, isOpen, onToggle }: StatePan
           <button className="sp-close-btn" onClick={onToggle}>✕</button>
         </div>
 
-        {/* ── CLIENT → SERVER ───────────────── */}
+        {/* ── 1. 핵심 여행 정보 (절대 초기화 안 됨) ── */}
         <section className="sp-section">
-          <ArrowHeader direction="↑" label="CLIENT → SERVER" pulsing={clientPulsing} />
+          <div className="sp-section-header">
+            <span className="sp-pin-icon">📌</span>
+            <span className="sp-section-label">핵심 여행 정보</span>
+            <span className="sp-badge sp-badge-stable">고정</span>
+          </div>
           <div className="sp-fields">
-            <FieldRow
-              label="selected_hotel"
-              value={uiContext.selected_hotel_code}
-              highlightClass="sp-highlight-client"
-            />
-            <FieldRow
-              label="selected_flight"
-              value={uiContext.selected_flight_id}
-              highlightClass="sp-highlight-client"
-            />
-            <FieldRow
-              label="current_view"
-              value={uiContext.current_view}
-              highlightClass="sp-highlight-client"
-            />
-            <FieldRow
-              label="currency"
-              value="KRW"
-              highlightClass="sp-highlight-client"
-            />
-            <FieldRow
-              label="language"
-              value="ko"
-              highlightClass="sp-highlight-client"
-            />
+            <FieldRow label="도착지" value={tc?.destination} highlightClass="sp-highlight-server" />
+            <FieldRow label="출발지" value={tc?.origin} highlightClass="sp-highlight-server" />
+            <FieldRow label="체크인" value={tc?.check_in} highlightClass="sp-highlight-server" />
+            <FieldRow label="체크아웃" value={tc?.check_out} highlightClass="sp-highlight-server" />
+            <FieldRow label="숙박 (박)" value={tc?.nights} highlightClass="sp-highlight-server" />
+            <FieldRow label="인원 (명)" value={tc?.guests} highlightClass="sp-highlight-server" />
+            <FieldRow label="여행 유형" value={tc?.trip_type} highlightClass="sp-highlight-server" />
           </div>
         </section>
 
         <div className="sp-divider" />
 
-        {/* ── SERVER → CLIENT ───────────────── */}
+        {/* ── 2. 현재 선택 / 화면 상태 (변경 가능) ── */}
+        <section className="sp-section">
+          <ArrowHeader direction="↑" label="CLIENT → SERVER" pulsing={clientPulsing} />
+          <div className="sp-fields">
+            <FieldRow
+              label="선택 호텔"
+              value={uiContext.selected_hotel_code}
+              highlightClass="sp-highlight-client"
+            />
+            <FieldRow
+              label="선택 항공편"
+              value={uiContext.selected_flight_id}
+              highlightClass="sp-highlight-client"
+            />
+            <FieldRow
+              label="현재 화면"
+              value={uiContext.current_view}
+              highlightClass="sp-highlight-client"
+            />
+            <FieldRow label="통화" value="KRW" highlightClass="sp-highlight-client" />
+            <FieldRow label="언어" value="ko" highlightClass="sp-highlight-client" />
+          </div>
+        </section>
+
+        <div className="sp-divider" />
+
+        {/* ── 3. 에이전트 상태 (서버 응답) ── */}
         <section className="sp-section">
           <ArrowHeader direction="↓" label="SERVER → CLIENT" pulsing={serverPulsing} />
-
-          <div className="sp-subsection-title">Travel Context</div>
           <div className="sp-fields">
-            <FieldRow label="destination" value={tc?.destination} highlightClass="sp-highlight-server" />
-            <FieldRow label="origin" value={tc?.origin} highlightClass="sp-highlight-server" />
-            <FieldRow label="check_in" value={tc?.check_in} highlightClass="sp-highlight-server" />
-            <FieldRow label="check_out" value={tc?.check_out} highlightClass="sp-highlight-server" />
-            <FieldRow label="nights" value={tc?.nights} highlightClass="sp-highlight-server" />
-            <FieldRow label="guests" value={tc?.guests} highlightClass="sp-highlight-server" />
-            <FieldRow label="trip_type" value={tc?.trip_type} highlightClass="sp-highlight-server" />
-          </div>
-
-          <div className="sp-subsection-title" style={{ marginTop: '12px' }}>Agent Status</div>
-          <div className="sp-fields">
-            <FieldRow label="intent" value={as?.current_intent} highlightClass="sp-highlight-server" />
-            <FieldRow label="active_tool" value={as?.active_tool} highlightClass="sp-highlight-server" />
+            <FieldRow label="인텐트" value={as?.current_intent} highlightClass="sp-highlight-server" />
+            <FieldRow label="실행 도구" value={as?.active_tool} highlightClass="sp-highlight-server" />
             <FieldRow
-              label="missing_fields"
+              label="미입력 항목"
               value={as?.missing_fields?.length ? as.missing_fields.join(', ') : null}
               highlightClass="sp-highlight-server"
             />

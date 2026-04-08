@@ -192,15 +192,27 @@ def search_flights(
 
 ### 3. request_user_input
 
-**목적**: 호텔/항공편 검색에 필요한 정보가 부족할 때 사용자 입력 폼 요청
+**목적**: 호텔/항공편 검색에 필요한 정보가 부족할 때 사용자 입력 폼 요청. 기존 여행 컨텍스트(날짜·인원)를 `context`에 담아 전달하면 폼 필드에 자동 pre-fill됩니다.
 
 **시그니처**:
 ```python
 def request_user_input(
     input_type: str,      # "hotel_booking_details" | "flight_booking_details"
     fields: str = "",     # 사용하지 않음 (자동 생성)
-    context: str = ""     # 도시명 또는 "출발지|목적지"
+    context: str = ""     # 기존 여행 컨텍스트를 JSON 문자열로 전달
 ) -> dict
+```
+
+**context 형식 (JSON 문자열)**:
+```python
+# 호텔 — 기존 항공 일정이 있는 경우
+context = '{"city":"도쿄","check_in":"2026-06-10","check_out":"2026-06-14","guests":2}'
+
+# 항공편 — 기존 호텔 일정이 있는 경우 (체크인→departure_date, 체크아웃→return_date)
+context = '{"origin":"서울","destination":"도쿄","departure_date":"2026-06-10","return_date":"2026-06-14","passengers":2}'
+
+# 아무 정보도 없는 경우
+context = '{"city":"서울"}'   # 또는 "" 또는 '{}'
 ```
 
 **반환 형식 (호텔)**:
@@ -209,21 +221,10 @@ def request_user_input(
   "status": "user_input_required",
   "input_type": "hotel_booking_details",
   "fields": [
-    {
-      "name": "city",
-      "type": "text",
-      "label": "도시",
-      "required": true,
-      "default": "서울"
-    },
-    {
-      "name": "check_in",
-      "type": "date",
-      "label": "체크인",
-      "required": true,
-      "default": "2026-04-16"
-    },
-    ...
+    { "name": "city",      "type": "text",   "label": "도시",    "required": true,  "default": "도쿄" },
+    { "name": "check_in",  "type": "date",   "label": "체크인",  "required": true,  "default": "2026-06-10" },
+    { "name": "check_out", "type": "date",   "label": "체크아웃","required": true,  "default": "2026-06-14" },
+    { "name": "guests",    "type": "number", "label": "인원수",  "required": true,  "default": "2" }
   ]
 }
 ```
@@ -233,9 +234,9 @@ def request_user_input(
 - 항공편 검색: 출발지, 목적지, 출발 날짜, 인원수 중 **하나라도 없을 때**
 - 예: "서울 호텔 알려줘" (날짜와 인원수 없음)
 
-**context 사용법**:
-- 호텔: `context="도쿄"` → 도시 필드에 "도쿄" 자동 입력
-- 항공편: `context="서울|도쿄"` → 출발지 "서울", 목적지 "도쿄" 자동 입력
+**크로스 서비스 날짜 재사용**:
+- 호텔 조회 이력 있음 + 항공편 문의 → `check_in`→`departure_date`, `check_out`→`return_date`, `guests`→`passengers`
+- 항공편 조회 이력 있음 + 호텔 문의 → `departure_date`→`check_in`, `return_date`→`check_out`, `passengers`→`guests`
 
 ---
 
@@ -287,22 +288,46 @@ instruction="""당신은 여행 AI의 AI 여행 상담 전문가입니다.
 - 친절하고 전문적인 톤으로 한국어로 응답합니다
 - 정확한 정보를 제공하기 위해 항상 도구를 활용합니다
 
-도구 사용 가이드:
-- 호텔 문의 시:
-  1) 도시만 언급됨 → request_user_input("hotel_booking_details", "", "도시명")
-  2) 모든 정보 있음 → search_hotels(city, check_in, check_out, guests)
-- 항공편 문의 시:
-  1) 출발지나 목적지만 언급됨 → request_user_input("flight_booking_details", "", "출발지|목적지")
-  2) 모든 정보 있음 → search_flights(origin, destination, departure_date, passengers, return_date)
-- 여행지 정보 → get_travel_tips(destination)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[현재 여행 컨텍스트] 활용 규칙 (최우선 적용)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+메시지 앞에 "[현재 여행 컨텍스트 - 이미 확인된 정보]" 블록이 있으면:
+- 해당 정보를 대화의 기준 값으로 사용합니다
+- 사용자가 명시적으로 다른 값을 말하지 않는 한 기존 값을 그대로 유지합니다
 
-예시:
-"서울 호텔 알려줘" → request_user_input("hotel_booking_details", "", "서울")
-"도쿄 6월 10일부터 14일까지 2명" → search_hotels("도쿄", "2026-06-10", "2026-06-14", 2)
+날짜·인원 자동 재사용 (크로스 서비스 편의성):
+- 호텔 조회 이력 있음 + 항공편 문의 → 체크인→departure_date, 체크아웃→return_date, 인원→passengers
+- 항공편 조회 이력 있음 + 호텔 문의 → departure_date→check_in, return_date→check_out, passengers→guests
+- 목적지가 이미 설정된 경우 도시 재확인 없이 바로 검색 진행
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+도구 사용 가이드
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- 호텔 문의 시:
+  1) 기존 컨텍스트 없음
+     → request_user_input("hotel_booking_details", "", '{"city":"도시명"}')
+  2) 기존 컨텍스트에 날짜·인원 있음
+     → request_user_input("hotel_booking_details", "", '{"city":"도시명","check_in":"YYYY-MM-DD","check_out":"YYYY-MM-DD","guests":N}')
+  3) 모든 정보 있음 → search_hotels(city, check_in, check_out, guests)
+- 항공편 문의 시:
+  1) 기존 컨텍스트 없음
+     → request_user_input("flight_booking_details", "", '{"origin":"출발지","destination":"목적지"}')
+  2) 기존 컨텍스트에 날짜·인원 있음
+     → request_user_input("flight_booking_details", "", '{"origin":"서울","destination":"도시","departure_date":"YYYY-MM-DD","return_date":"YYYY-MM-DD","passengers":N}')
+  3) 모든 정보 있음 → search_flights(origin, destination, departure_date, passengers, return_date)
+- 여행지 정보 → get_travel_tips(destination)
+- 호텔 상세 정보 (HTL-XXX-000 형식) → get_hotel_detail(hotel_code)
+
+시나리오 예시:
+"서울 호텔 알려줘" → request_user_input("hotel_booking_details", "", '{"city":"서울"}')
+"도쿄 6월 10일~14일 2명 호텔" → search_hotels("도쿄", "2026-06-10", "2026-06-14", 2)
+(기존 호텔 컨텍스트 있음) + "항공편 알려줘"
+  → search_flights("서울", "도쿄", "2026-06-10", 2, "2026-06-14")
 
 응답 형식:
 - 검색 결과는 간결하고 보기 좋게 정리해서 제공
 - 가격은 항상 원화(원)로 표시
+- 기존 컨텍스트 값을 재사용했을 때는 어떤 값을 적용했는지 한 줄로 안내
 - 추가 문의가 있으면 편하게 질문하도록 안내
 - 이모지를 적절히 활용하여 가독성 향상
 
@@ -340,16 +365,21 @@ instruction="""당신은 여행 AI의 AI 여행 상담 전문가입니다.
 
 **핵심 규칙**:
 1. 호텔/항공편 검색 정보가 하나라도 부족하면 텍스트 질문보다 `request_user_input`을 우선 호출합니다.
-2. 이미 문맥에서 알 수 있는 값은 `context`로 넘겨 폼 기본값을 채웁니다.
-3. instruction 수정 후에는 반드시 Playwright E2E로 폼 표시, 기본값, 제출 후 자연어 변환까지 확인합니다.
+2. 이미 문맥에서 알 수 있는 값은 `context` JSON에 담아 폼 기본값을 채웁니다.
+3. `context`는 반드시 **유효한 JSON 문자열**이어야 합니다. 구형 문자열 형식(`"도시명"`, `"출발|목적"`)은 하위 호환 처리되지만 신규 개발에서는 JSON을 사용합니다.
+4. instruction 수정 후에는 반드시 Playwright E2E로 폼 표시, 기본값, 제출 후 자연어 변환까지 확인합니다.
 
 **권장 표현 예시**:
 ```
 호텔 또는 항공편 검색에서 필수 정보가 하나라도 누락되면
 텍스트로 추가 질문하지 말고 반드시 request_user_input을 호출하세요.
 
-- "서울 호텔 알려줘" → request_user_input("hotel_booking_details", "", "서울")
-- "서울에서 도쿄 가는 항공편" → request_user_input("flight_booking_details", "", "서울|도쿄")
+# 기존 컨텍스트 없음
+- "서울 호텔 알려줘" → request_user_input("hotel_booking_details", "", '{"city":"서울"}')
+- "서울에서 도쿄 가는 항공편" → request_user_input("flight_booking_details", "", '{"origin":"서울","destination":"도쿄"}')
+
+# 기존 호텔 컨텍스트 있음 (체크인 2026-06-10, 체크아웃 2026-06-14, 2명) + 항공편 문의
+→ request_user_input("flight_booking_details", "", '{"origin":"서울","destination":"도쿄","departure_date":"2026-06-10","return_date":"2026-06-14","passengers":2}')
 ```
 
 ---
