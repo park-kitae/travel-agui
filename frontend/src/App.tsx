@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { useAGUIChat } from './hooks/useAGUIChat'
 import { ChatMessageBubble } from './components/ChatMessageBubble'
+import { StatePanel } from './components/StatePanel'
 
 const SUGGESTIONS = [
   '도쿄 호텔 추천해줘 (6월 10일~14일, 2명)',
@@ -10,8 +11,10 @@ const SUGGESTIONS = [
 ]
 
 export default function App() {
-  const { messages, isRunning, error, sendMessage, interruptAndSend, stopStreaming, clearMessages, markFormSubmitted } = useAGUIChat()
+  const { messages, isRunning, error, agentState, uiContext, updateUiContext, sendMessage, interruptAndSend, stopStreaming, clearMessages, markFormSubmitted } = useAGUIChat()
   const [input, setInput] = useState('')
+  // 모바일(<1024px)에서는 기본으로 닫음, 데스크톱에서는 열림
+  const [statePanelOpen, setStatePanelOpen] = useState(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -41,6 +44,7 @@ export default function App() {
   }
 
   const handleHotelClick = (hotelCode: string, hotelName: string) => {
+    updateUiContext({ selected_hotel_code: hotelCode, current_view: 'hotel_detail' })
     interruptAndSend(`${hotelName}(${hotelCode}) 호텔의 상세 정보를 알려줘`)
   }
 
@@ -104,7 +108,8 @@ export default function App() {
   const isEmpty = messages.length === 0
 
   return (
-    <div className="app">
+    <div className="app-layout">
+    <div className="chat-column app">
       {/* 헤더 */}
       <header className="header">
         <div className="header-inner">
@@ -191,6 +196,15 @@ export default function App() {
           Shift+Enter로 줄바꿈 · Google ADK + AG-UI 미들웨어
         </div>
       </footer>
+    </div>
+
+    {/* 상태 패널 사이드바 */}
+    <StatePanel
+      agentState={agentState}
+      uiContext={uiContext}
+      isOpen={statePanelOpen}
+      onToggle={() => setStatePanelOpen(prev => !prev)}
+    />
     </div>
   )
 }

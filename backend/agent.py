@@ -504,41 +504,108 @@ def request_user_input(input_type: str, fields: str = "", context: str = "") -> 
     Args:
         input_type: "hotel_booking_details" 또는 "flight_booking_details"
         fields: 사용하지 않음 (자동 생성됨)
-        context: 호텔의 경우 도시명(도시를 모르면 반드시 빈 문자열 "" 사용), 항공편의 경우 "출발지|목적지" 형식
+        context: 기존 여행 컨텍스트를 JSON 문자열로 전달 (기본값 채우기용)
+            - hotel_booking_details 예시:
+              '{"city":"도쿄","check_in":"2026-06-10","check_out":"2026-06-14","guests":2}'
+            - flight_booking_details 예시:
+              '{"origin":"서울","destination":"도쿄","departure_date":"2026-06-10","return_date":"2026-06-14","passengers":2}'
+            - 알 수 없는 값은 해당 키를 생략하거나 빈 문자열로 전달
 
     Returns:
-        사용자 입력 요청 정보
+        사용자 입력 요청 정보 (기존 컨텍스트 값이 default로 채워진 필드 포함)
     """
-    from datetime import datetime, timedelta
+    import json as _json
+
+    # context를 JSON으로 파싱 (실패하면 빈 dict)
+    ctx: dict = {}
+    if context:
+        try:
+            ctx = _json.loads(context)
+        except Exception:
+            # 하위 호환: 구형 "city" 또는 "origin|destination" 형식 처리
+            if "|" in context:
+                parts = context.split("|", 1)
+                ctx = {"origin": parts[0].strip(), "destination": parts[1].strip()}
+            else:
+                ctx = {"city": context.strip()}
 
     if input_type == "hotel_booking_details":
-        check_in_date = datetime.now() + timedelta(weeks=3)
-        check_out_date = check_in_date + timedelta(days=1)
-
         field_list = [
-            {"name": "city", "type": "text", "label": "도시", "required": True, "default": context if context else ""},
-            {"name": "check_in", "type": "date", "label": "체크인", "required": True, "default": check_in_date.strftime("%Y-%m-%d")},
-            {"name": "check_out", "type": "date", "label": "체크아웃", "required": True, "default": check_out_date.strftime("%Y-%m-%d")},
-            {"name": "guests", "type": "number", "label": "인원수", "required": True, "default": "2"},
+            {
+                "name": "city",
+                "type": "text",
+                "label": "도시",
+                "required": True,
+                "default": ctx.get("city", ""),
+            },
+            {
+                "name": "check_in",
+                "type": "date",
+                "label": "체크인",
+                "required": True,
+                "default": ctx.get("check_in", ""),
+            },
+            {
+                "name": "check_out",
+                "type": "date",
+                "label": "체크아웃",
+                "required": True,
+                "default": ctx.get("check_out", ""),
+            },
+            {
+                "name": "guests",
+                "type": "number",
+                "label": "인원수",
+                "required": True,
+                "default": str(ctx.get("guests", "")),
+            },
         ]
+
     elif input_type == "flight_booking_details":
-        departure_date = datetime.now() + timedelta(days=30)
-        return_date = departure_date + timedelta(days=7)
-
-        origin = ""
-        destination = ""
-        if context and "|" in context:
-            parts = context.split("|")
-            origin = parts[0] if len(parts) > 0 else ""
-            destination = parts[1] if len(parts) > 1 else ""
-
         field_list = [
-            {"name": "origin", "type": "text", "label": "출발지", "required": True, "default": origin},
-            {"name": "destination", "type": "text", "label": "목적지", "required": True, "default": destination},
-            {"name": "trip_type", "type": "select", "label": "여행 유형", "required": True, "options": ["편도", "왕복"], "default": "왕복"},
-            {"name": "departure_date", "type": "date", "label": "출발 날짜", "required": True, "default": departure_date.strftime("%Y-%m-%d")},
-            {"name": "return_date", "type": "date", "label": "귀국 날짜", "required": False, "default": return_date.strftime("%Y-%m-%d")},
-            {"name": "passengers", "type": "number", "label": "승객 수", "required": True, "default": "1"},
+            {
+                "name": "origin",
+                "type": "text",
+                "label": "출발지",
+                "required": True,
+                "default": ctx.get("origin", ""),
+            },
+            {
+                "name": "destination",
+                "type": "text",
+                "label": "목적지",
+                "required": True,
+                "default": ctx.get("destination", ""),
+            },
+            {
+                "name": "trip_type",
+                "type": "select",
+                "label": "여행 유형",
+                "required": True,
+                "options": ["편도", "왕복"],
+                "default": ctx.get("trip_type", "왕복"),
+            },
+            {
+                "name": "departure_date",
+                "type": "date",
+                "label": "출발 날짜",
+                "required": True,
+                "default": ctx.get("departure_date", ""),
+            },
+            {
+                "name": "return_date",
+                "type": "date",
+                "label": "귀국 날짜",
+                "required": False,
+                "default": ctx.get("return_date", ""),
+            },
+            {
+                "name": "passengers",
+                "type": "number",
+                "label": "승객 수",
+                "required": True,
+                "default": str(ctx.get("passengers", "")),
+            },
         ]
     else:
         field_list = []
@@ -546,7 +613,7 @@ def request_user_input(input_type: str, fields: str = "", context: str = "") -> 
     return {
         "status": "user_input_required",
         "input_type": input_type,
-        "fields": field_list
+        "fields": field_list,
     }
 
 
@@ -638,14 +705,47 @@ def create_travel_agent() -> LlmAgent:
 - 친절하고 전문적인 톤으로 한국어로 응답합니다
 - 정확한 정보를 제공하기 위해 항상 도구를 활용합니다
 
-도구 사용 가이드:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[현재 여행 컨텍스트] 활용 규칙 (최우선 적용)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+메시지 앞에 "[현재 여행 컨텍스트 - 이미 확인된 정보]" 블록이 있으면:
+- 해당 정보를 대화의 기준 값으로 사용합니다
+- 사용자가 명시적으로 다른 값을 말하지 않는 한 기존 값을 그대로 유지합니다
+
+날짜·인원 자동 재사용 (크로스 서비스 편의성):
+- 호텔 조회 이력이 있고 항공편을 문의하는 경우:
+  → 체크인 날짜를 departure_date로, 체크아웃 날짜를 return_date로 자동 사용
+  → "기존 일정(체크인: X일, 체크아웃: Y일)을 항공편에도 적용하겠습니다 ✈️" 형식으로 안내
+  → 인원수도 passengers에 그대로 적용
+- 항공편 조회 이력이 있고 호텔을 문의하는 경우:
+  → departure_date를 check_in으로, return_date를 check_out으로 자동 사용
+  → "기존 항공 일정(출발: X일, 귀국: Y일)을 호텔 예약에도 적용하겠습니다 🏨" 형식으로 안내
+  → 탑승객 수도 guests에 그대로 적용
+- 목적지가 이미 설정된 경우 도시 재확인 없이 바로 검색 진행
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+도구 사용 가이드
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 - 호텔 문의 시:
-  1) 도시 언급 없음 → request_user_input("hotel_booking_details", "", "")  ← context 반드시 빈 문자열
-  2) 도시만 언급됨 → request_user_input("hotel_booking_details", "", "도시명")
+  1) 날짜·인원 정보가 없고 기존 컨텍스트도 없음
+     → request_user_input("hotel_booking_details", "", '{"city":"도시명"}')
+     (도시도 모르면 context를 "" 또는 '{}' 로 전달)
+  2) 날짜·인원 정보가 없지만 기존 컨텍스트에 날짜·인원이 있음
+     → request_user_input("hotel_booking_details", "", '{"city":"도시명","check_in":"YYYY-MM-DD","check_out":"YYYY-MM-DD","guests":N}')
+     (기존 값을 context JSON에 그대로 담아서 전달 → 폼 필드에 자동 pre-fill)
   3) 모든 정보 있음 → search_hotels(city, check_in, check_out, guests)
+
 - 항공편 문의 시:
-  1) 출발지나 목적지만 언급됨 → request_user_input("flight_booking_details", "", "출발지|목적지")
-  2) 모든 정보 있음 → search_flights(origin, destination, departure_date, passengers, return_date)
+  1) 날짜·인원 정보가 없고 기존 컨텍스트도 없음
+     → request_user_input("flight_booking_details", "", '{"origin":"출발지","destination":"목적지"}')
+  2) 날짜·인원 정보가 없지만 기존 컨텍스트에 날짜·인원이 있음 (호텔 검색 이후 등)
+     → request_user_input("flight_booking_details", "", '{"origin":"서울","destination":"도시명","departure_date":"YYYY-MM-DD","return_date":"YYYY-MM-DD","passengers":N}')
+     (체크인→departure_date, 체크아웃→return_date, guests→passengers 로 변환해서 전달)
+  3) 모든 정보 있음 → search_flights(origin, destination, departure_date, passengers, return_date)
+
+  ※ context JSON은 반드시 유효한 JSON 문자열이어야 합니다
+  ※ 기존 컨텍스트 값을 재사용할 때는 사용자에게 "기존 일정을 적용했습니다"라고 안내
+
 - 여행지 정보 → get_travel_tips(destination)
 - 호텔 상세 정보 문의 시 (호텔 코드 형식: HTL-XXX-000) → get_hotel_detail(hotel_code)
 
@@ -653,13 +753,25 @@ def create_travel_agent() -> LlmAgent:
 - "HTL-SEO-001 호텔 상세 정보 알려줘" → get_hotel_detail("HTL-SEO-001")
 - 사용자가 호텔 코드를 언급하면 반드시 get_hotel_detail을 호출합니다
 
-예시:
-"서울 호텔 알려줘" → request_user_input("hotel_booking_details", "", "서울")
-"도쿄 6월 10일부터 14일까지 2명" → search_hotels("도쿄", "2026-06-10", "2026-06-14", 2)
+시나리오 예시:
+- "서울 호텔 알려줘" (컨텍스트 없음)
+  → request_user_input("hotel_booking_details", "", '{"city":"서울"}')
+
+- "도쿄 6월 10일~14일 2명 호텔" (정보 완전)
+  → search_hotels("도쿄", "2026-06-10", "2026-06-14", 2)
+
+- 기존 컨텍스트(체크인 2026-06-10, 체크아웃 2026-06-14, 인원 2) + "항공편도 알려줘"
+  → search_flights("서울", "도쿄", "2026-06-10", 2, "2026-06-14")  (정보 완전)
+  또는 목적지만 모를 경우:
+  → request_user_input("flight_booking_details", "", '{"origin":"서울","departure_date":"2026-06-10","return_date":"2026-06-14","passengers":2}')
+
+- 기존 컨텍스트(출발 2026-07-01, 귀국 2026-07-08, 탑승 2명) + "호텔도 찾아줘"
+  → request_user_input("hotel_booking_details", "", '{"city":"목적지","check_in":"2026-07-01","check_out":"2026-07-08","guests":2}')
 
 응답 형식:
 - 검색 결과는 간결하고 보기 좋게 정리해서 제공
 - 가격은 항상 원화(원)로 표시
+- 기존 컨텍스트 값을 재사용했을 때는 어떤 값을 적용했는지 한 줄로 안내
 - 추가 문의가 있으면 편하게 질문하도록 안내
 - 이모지를 적절히 활용하여 가독성 향상
 

@@ -56,6 +56,12 @@ graph TB
     Agent -->|ADK Events| ADKExecutor
     ADKExecutor -->|A2A Events| A2AServer
 
+    subgraph "Backend Testing (Pytest)"
+        BT[Backend Tests]
+        BT -->|Test /agui/run| Gateway
+        BT -->|Test Streaming| A2AServer
+    end
+
     style UI fill:#e1f5ff
     style Gateway fill:#fff4e1
     style A2AServer fill:#e8f5e9
@@ -70,6 +76,8 @@ graph TB
 | **AG-UI Gateway** | AG-UI Protocol | 8000 | A2A ↔ AG-UI 이벤트 변환 |
 | **A2A Server** | A2A Protocol | 8001 | ADK 에이전트를 A2A로 노출 |
 | **ADK Agent** | Google ADK | - | LLM + FunctionTools 실행 |
+| **Backend Tests** | Pytest / Async | - | SSE 스트림 및 API 로직 검증 |
+| **E2E Tests** | Playwright | - | 프론트엔드-백엔드 통합 시나리오 검증 |
 
 ---
 
@@ -88,7 +96,7 @@ sequenceDiagram
     participant Gemini as Gemini LLM
 
     User->>Frontend: 입력: "도쿄 호텔 알려줘"
-    Frontend->>Gateway: POST /agui/run<br/>{messages: [{role:"user", content:"도쿄 호텔 알려줘"}]}
+    Frontend->>Gateway: POST /agui/run<br/>{messages: [...], state: {ui_context, travel_context}}
 
     Gateway->>A2AClient: SendStreamingMessageRequest
     A2AClient->>A2AServer: POST /tasks<br/>(A2A Message)
@@ -144,13 +152,20 @@ const sendMessage = async (content: string) => {
   // UI에 사용자 메시지 즉시 추가
   setMessages(prev => [...prev, userMessage]);
 
-  // AG-UI 게이트웨이로 전송
+  // AG-UI 게이트웨이로 전송 (travel_context 포함)
+  const clientState = {
+    ui_context: uiContext,
+    session_prefs: { currency: 'KRW', language: 'ko' },
+    travel_context: agentState?.travel_context ?? null,  // 호텔↔항공 날짜 재사용
+  };
+
   const response = await fetch('/agui/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       threadId: threadId || generateId(),
       runId: generateId(),
+      state: clientState,
       messages: [
         ...messages.map(m => ({ role: m.role, content: m.content })),
         { role: 'user', content }
@@ -230,13 +245,21 @@ const handleAGUIEvent = (event: any) => {
       break;
 
     case 'STATE_SNAPSHOT':
-      // 툴 실행 결과 (호텔 검색 결과, 사용자 입력 폼 등)
-      if (event.snapshot.status === 'user_input_required') {
-        // 사용자 입력 폼 렌더링
-        setUserInputForm(event.snapshot);
+      if (snapshot.snapshot_type === 'agent_state') {
+        // 핵심 여행 정보(destination, check_in, check_out, nights, guests, origin, trip_type)는
+        // null로 덮어쓰지 않음 → 호텔 상세 조회 등 부분 업데이트 시 기존 값 보호
+        const PERSISTENT_FIELDS = ['destination','check_in','check_out','nights','guests','origin','trip_type'];
+        setAgentState(prev => {
+          const merged = { ...prev?.travel_context };
+          for (const [key, value] of Object.entries(snapshot.travel_context)) {
+            if (PERSISTENT_FIELDS.includes(key) && value === null && merged[key] != null) continue;
+            merged[key] = value;
+          }
+          return { travel_context: merged, agent_status: snapshot.agent_status };
+        });
       } else {
-        // 검색 결과 카드 렌더링
-        setToolResults(prev => [...prev, event.snapshot]);
+        // tool_result → ToolResultCard 렌더링
+        updateMessage(assistantId, m => ({ ...m, snapshots: [...m.snapshots, snapshot] }));
       }
       break;
 
@@ -248,6 +271,24 @@ const handleAGUIEvent = (event: any) => {
 ```
 
 #### 1.3 UI 렌더링
+
+#### 1.4 State Flow 패널
+
+**StatePanel 컴포넌트**: `frontend/src/components/StatePanel.tsx`
+
+사용자가 한눈에 현재 여행 상태를 확인할 수 있도록 3개 섹션으로 구성됩니다.
+
+| 섹션 | 내용 | 특징 |
+|------|------|------|
+| 📌 핵심 여행 정보 | 도착지·출발지·체크인/아웃·숙박·인원·여행유형 | null로 초기화되지 않는 고정 값 |
+| ↑ CLIENT → SERVER | 선택 호텔·항공편·현재 화면·통화·언어 | 사용자 액션으로 변경되는 값 |
+| ↓ SERVER → CLIENT | 인텐트·실행 도구·미입력 항목 | 에이전트 처리 상태 |
+
+값이 변경될 때 해당 필드가 0.5초 하이라이트되어 어떤 값이 업데이트됐는지 시각적으로 표시됩니다.
+
+---
+
+#### 1.5 UI 렌더링
 
 **ToolResultCard 컴포넌트**: `frontend/src/components/ToolResultCard.tsx`
 
@@ -307,14 +348,28 @@ a2a_client = A2AClient(
 
 @app.post("/agui/run")
 async def handle_run(body: dict):
-    """AG-UI RunAgentInput 수신 → A2A 호출 → AG-UI 이벤트 스트리밍"""
+    """AG-UI RunAgentInput 수신 → travel_context 주입 → A2A 호출 → AG-UI 이벤트 스트리밍"""
 
     # 1. 메시지 ID 자동 부여 (AG-UI 요구사항)
     for msg in body["messages"]:
         if isinstance(msg, dict) and "id" not in msg:
             msg["id"] = str(uuid.uuid4())
 
-    # 2. A2A SendStreamingMessageRequest 생성
+    # 2. travel_context가 있으면 사용자 메시지 앞에 컨텍스트 블록 주입
+    #    → 에이전트가 기존 날짜·인원을 인지하고 호텔↔항공편 전환 시 재사용
+    client_state = body.get("state") or {}
+    travel_context = client_state.get("travel_context") or {}
+    ctx_lines = []
+    if travel_context.get("destination"): ctx_lines.append(f"- 목적지: {travel_context['destination']}")
+    if travel_context.get("check_in"):    ctx_lines.append(f"- 체크인/출발일: {travel_context['check_in']}")
+    if travel_context.get("check_out"):   ctx_lines.append(f"- 체크아웃/귀국일: {travel_context['check_out']}")
+    if travel_context.get("guests"):      ctx_lines.append(f"- 인원: {travel_context['guests']}명")
+
+    if ctx_lines:
+        context_block = "[현재 여행 컨텍스트 - 이미 확인된 정보]\n" + "\n".join(ctx_lines)
+        user_message = f"{context_block}\n\n사용자 요청: {user_message}"
+
+    # 3. A2A SendStreamingMessageRequest 생성
     request = SendStreamingMessageRequest(
         id=body.get("runId", str(uuid.uuid4())),
         params=MessageSendParams(

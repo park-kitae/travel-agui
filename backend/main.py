@@ -272,6 +272,36 @@ async def run_agent(request: Request):
     if not user_message:
         user_message = "안녕하세요"
 
+    # client_state 추출 (RunAgentInput.state 필드, 없으면 빈 dict)
+    client_state: dict = {}
+    raw_state = body.get("state")
+    if isinstance(raw_state, dict) and raw_state:
+        client_state = raw_state
+
+    # travel_context가 있으면 에이전트 메시지 앞에 컨텍스트 블록을 주입
+    # → 호텔 조회 후 항공편 문의 시(또는 반대) 기존 날짜·인원 자동 재사용
+    travel_context: dict = client_state.get("travel_context") or {}
+    ctx_lines = []
+    if travel_context.get("destination"):
+        ctx_lines.append(f"- 목적지: {travel_context['destination']}")
+    if travel_context.get("origin"):
+        ctx_lines.append(f"- 출발지: {travel_context['origin']}")
+    if travel_context.get("check_in"):
+        ctx_lines.append(f"- 체크인/출발일: {travel_context['check_in']}")
+    if travel_context.get("check_out"):
+        ctx_lines.append(f"- 체크아웃/귀국일: {travel_context['check_out']}")
+    if travel_context.get("nights"):
+        ctx_lines.append(f"- 숙박: {travel_context['nights']}박")
+    if travel_context.get("guests"):
+        ctx_lines.append(f"- 인원: {travel_context['guests']}명")
+    if travel_context.get("trip_type"):
+        ctx_lines.append(f"- 여행 유형: {travel_context['trip_type']}")
+
+    if ctx_lines:
+        context_block = "[현재 여행 컨텍스트 - 이미 확인된 정보]\n" + "\n".join(ctx_lines)
+        user_message = f"{context_block}\n\n사용자 요청: {user_message}"
+        logger.info(f"[{thread_id}] 여행 컨텍스트 주입: {ctx_lines}")
+
     logger.info(f"[{thread_id}] 사용자 입력: {user_message[:80]}")
 
     async def event_stream() -> AsyncGenerator[str, None]:
@@ -292,16 +322,20 @@ async def run_agent(request: Request):
                 agent_card = AgentCard.model_validate(card_resp.json())
                 a2a_client = A2AClient(httpx_client=http_client, agent_card=agent_card)
 
-                # 3. A2A 스트리밍 요청
+                # 3. A2A 스트리밍 요청 (client_state를 metadata로 전달)
+                msg_kwargs: dict = {
+                    "role": Role.user,
+                    "parts": [Part(root=TextPart(text=user_message))],
+                    "message_id": str(uuid.uuid4()),
+                    "context_id": thread_id,
+                }
+                if client_state:
+                    msg_kwargs["metadata"] = {"client_state": client_state}
+
                 a2a_request = SendStreamingMessageRequest(
                     id=str(uuid.uuid4()),
                     params=MessageSendParams(
-                        message=Message(
-                            role=Role.user,
-                            parts=[Part(root=TextPart(text=user_message))],
-                            message_id=str(uuid.uuid4()),
-                            context_id=thread_id,
-                        ),
+                        message=Message(**msg_kwargs),
                     ),
                 )
 

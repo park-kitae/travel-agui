@@ -8,10 +8,13 @@ React + Vite 프론트엔드와 Google ADK 에이전트를 **A2A → AG-UI** 이
 - **호텔 상세 조회**: 호텔 카드 클릭 시 객실 정보, 편의시설, 위치 등 상세 정보 표시
 - **항공편 검색**: 출발지, 목적지, 날짜, 인원수로 왕복 항공편 검색
 - **여행 정보**: 목적지별 여행 팁 및 관광 정보 제공
-- **사용자 입력 폼**: 정보가 부족할 때 대화형 폼으로 필요한 정보 수집
+- **사용자 입력 폼**: 정보가 부족할 때 대화형 폼으로 필요한 정보 수집 (기존 날짜·인원 자동 pre-fill)
+- **여행 컨텍스트 재사용**: 호텔 조회 후 항공편 문의 시(또는 반대) 기존 날짜·인원을 자동으로 폼에 적용
+- **핵심 상태 보호**: 목적지·날짜·인원 등 핵심 여행 정보는 호텔 상세 조회 등 부분 업데이트에 의해 초기화되지 않음
 - **실시간 스트리밍**: SSE를 통한 에이전트 응답 실시간 렌더링
 - **툴 실행 표시**: 호텔/항공편 검색 진행 상태 실시간 표시
 - **스트림 인터럽트**: 응답 중에도 호텔 클릭 시 현재 스트림을 중단하고 즉시 새 요청 전송
+- **State Flow 패널**: 핵심 여행 정보(고정) → 클라이언트 상태 → 에이전트 상태 순으로 한눈에 확인
 
 ---
 
@@ -38,10 +41,10 @@ ADK Runner → Gemini LLM + FunctionTools
 
 | 레이어 | 파일 | 역할 |
 |---|---|---|
-| **React Client** | `frontend/src/` | AG-UI SSE 수신 → 실시간 UI 렌더링 |
-| **AG-UI Gateway** | `backend/main.py` | RunAgentInput 수신 → A2A 요청 → AG-UI 이벤트 변환 |
-| **A2A Server** | `backend/a2a_server.py` | ADK 에이전트를 A2A 프로토콜로 노출 |
-| **ADK Agent** | `backend/agent.py` | LlmAgent + FunctionTool 정의 |
+| **React Client** | `frontend/src/` | AG-UI SSE 수신 → 실시간 UI 렌더링, travel_context 포함 전송 |
+| **AG-UI Gateway** | `backend/main.py` | RunAgentInput 수신 → travel_context 주입 → A2A 요청 → AG-UI 이벤트 변환 |
+| **A2A Server** | `backend/a2a_server.py` | ADK 에이전트를 A2A 프로토콜로 노출, agent_state STATE_SNAPSHOT 발행 |
+| **ADK Agent** | `backend/agent.py` | LlmAgent + FunctionTool 정의, 여행 컨텍스트 재사용 프롬프트 |
 
 ---
 
@@ -55,38 +58,23 @@ travel-agui/
 ├── logs/                 # 서버 로그 파일 (gitignore)
 ├── backend/
 │   ├── agent.py          # ADK LlmAgent + FunctionTool 정의
-│   │                     #   - search_hotels / search_flights
-│   │                     #   - get_hotel_detail / get_travel_tips
-│   │                     #   - request_user_input
 │   ├── a2a_server.py     # A2A 에이전트 서버 (포트 8001)
-│   │                     #   ADKAgentExecutor: ADK 이벤트 → A2A 이벤트 변환
 │   ├── main.py           # AG-UI 게이트웨이 (포트 8000)
-│   │                     #   A2AClient: A2A 이벤트 → AG-UI 이벤트 변환
+│   ├── tests/            # 백엔드 Pytest 테스트 스위트
+│   │   ├── test_a2a_stream.py # A2A 스트리밍 검증
+│   │   └── test_agui_run.py   # AG-UI /agui/run 엔드포인트 검증
 │   ├── pyproject.toml    # uv 프로젝트 설정 및 의존성
-│   ├── .env.example      # 환경 변수 템플릿
-│   └── .venv/            # uv가 자동 생성하는 가상환경 (gitignore)
+│   └── .env.example      # 환경 변수 템플릿
 ├── frontend/
-│   ├── src/
-│   │   ├── hooks/
-│   │   │   └── useAGUIChat.ts        # AG-UI SSE 스트림 처리 훅
-│   │   │                             #   - interruptAndSend: 스트림 중단 후 새 요청
-│   │   │                             #   - isRunningRef: stale closure 방지
-│   │   ├── components/
-│   │   │   ├── ChatMessageBubble.tsx
-│   │   │   ├── ToolCallIndicator.tsx  # 실시간 툴 실행 상태 표시
-│   │   │   ├── ToolResultCard.tsx     # 호텔/항공/여행팁 카드 렌더링 (클릭 이벤트)
-│   │   │   └── UserInputForm.tsx      # 대화형 입력 폼 (호텔/항공편 정보 수집)
-│   │   ├── types/index.ts
-│   │   ├── App.tsx
-│   │   └── index.css
+│   ├── src/              # 프론트엔드 소스 코드
+│   ├── tests/            # Playwright Test 기반 E2E 스위트 (이동됨)
+│   │   ├── e2e/          # 서비스별 E2E 시나리오
+│   │   └── README.md
 │   ├── vite.config.ts    # /agui → :8000 프록시
-│   ├── package.json
-│   └── node_modules/
-└── tests/
-    ├── e2e/              # Playwright Test 기반 E2E 스위트
-    │   ├── *.spec.ts     # 호텔/항공편/폼/응답 검증 시나리오
-    │   └── utils/        # 공통 헬퍼
-    └── screenshots/      # 테스트 스크린샷 (gitignore)
+│   └── package.json
+└── openspec/             # OpenSpec 변경 관리 및 스키마
+    ├── changes/          # 변경 이력 관리
+    └── schemas/          # spec-driven-with-tests 커스텀 스키마
 ```
 
 ---
@@ -232,6 +220,7 @@ ADK 이벤트를 A2A `TaskArtifactUpdateEvent` 의 파트로 인코딩해 전달
 | `function_response` (종료 신호) | `DataPart` | `{ "_agui_event": "TOOL_CALL_END", "id": "..." }` |
 | `function_response` (결과) | `DataPart` | `{ "tool": "search_hotels", "result": {...} }` |
 | `request_user_input` | `DataPart` | `{ "_agui_event": "USER_INPUT_REQUEST", "requestId": "...", "inputType": "...", "fields": [...] }` |
+| `function_call` (agent_state) | `DataPart` | `{ "snapshot_type": "agent_state", "travel_context": {...}, "agent_status": {...} }` |
 
 #### main.py 변환 규칙
 
@@ -313,6 +302,26 @@ for msg in body["messages"]:
         msg["id"] = str(uuid.uuid4())
 ```
 
+### 양방향 상태 동기화 (travel_context)
+
+프론트엔드는 매 요청마다 누적된 `agentState.travel_context`를 서버로 전송합니다. 서버는 이를 파싱해 사용자 메시지 앞에 컨텍스트 블록으로 주입합니다.
+
+```
+[현재 여행 컨텍스트 - 이미 확인된 정보]
+- 목적지: 도쿄
+- 체크인/출발일: 2026-06-10
+- 체크아웃/귀국일: 2026-06-14
+- 인원: 2명
+
+사용자 요청: 항공편도 알려줘
+```
+
+에이전트는 이 컨텍스트를 읽고 날짜·인원을 재사용해 `search_flights` 또는 `request_user_input` 에 자동 반영합니다.
+
+**핵심 상태 보호**: `STATE_SNAPSHOT` 이벤트 수신 시 `destination`, `check_in`, `check_out`, `nights`, `guests`, `origin`, `trip_type` 필드는 null로 덮어쓰지 않습니다. 호텔 상세 조회처럼 부분적인 상태 업데이트가 오더라도 기존 여행 정보가 유지됩니다.
+
+---
+
 ### 호텔 클릭 → 상세 조회 흐름 (interruptAndSend)
 
 응답 스트리밍 중에도 호텔 카드를 클릭하면 현재 스트림을 중단하고 즉시 상세 조회 요청을 전송합니다.
@@ -366,46 +375,47 @@ uv add <패키지명>
 
 ---
 
-## E2E 테스트
+## 테스트 실행
 
-현재 E2E 테스트는 모두 Playwright Test Framework 기반으로 정리되어 있습니다.
-
-### 테스트 실행
+### 1. 백엔드 유닛/통합 테스트 (Pytest)
 
 ```bash
-# 서버가 실행 중이어야 함
-python start.py
+cd backend
+uv run pytest
+```
+
+### 2. 프론트엔드 E2E 테스트 (Playwright)
+
+현재 E2E 테스트는 `frontend/` 디렉토리 내에서 실행됩니다.
+
+```bash
+# 서버가 실행 중이어야 함 (python start.py)
+cd frontend
 
 # 전체 E2E 실행
 npm test
-
-# 동일한 E2E 명령 별칭
-npm run test:e2e
 
 # 브라우저를 보면서 실행
 npm run test:e2e:headed
 
 # Playwright UI 모드
 npm run test:ui
-
-# 특정 테스트만 실행
-npx playwright test tests/e2e/full-flow.spec.ts
 ```
 
-### 주요 테스트 시나리오
+### 주요 테스트 시나리오 (frontend/tests/e2e/)
 
 | 테스트 파일 | 목적 |
 |---|---|
-| `tests/e2e/full-flow.spec.ts` | 호텔 + 항공편 검색 전체 플로우 |
-| `tests/e2e/hotel-direct-search.spec.ts` | 모든 정보가 포함된 호텔 직접 검색 |
-| `tests/e2e/hotel-detail-click.spec.ts` | 호텔 카드 클릭 → 상세 정보 조회 |
-| `tests/e2e/default-values.spec.ts` | 호텔 폼 기본값 자동 설정 확인 |
-| `tests/e2e/natural-language.spec.ts` | 폼 제출 시 자연어 메시지 변환 |
-| `tests/e2e/flight-form.spec.ts` | 항공편 폼 기본값 및 자동 입력 |
-| `tests/e2e/form-submit.spec.ts` | 호텔 폼 제출 후 결과 표시 |
-| `tests/e2e/form-values.spec.ts` | 호텔 폼 입력값과 제출 상태 확인 |
-| `tests/e2e/assistant-response-check.spec.ts` | 툴 호출/폼 렌더링 응답 검증 |
-| `tests/e2e/response-capture.spec.ts` | `/agui/run` SSE 응답 캡처 검증 |
+| `frontend/tests/e2e/full-flow.spec.ts` | 호텔 + 항공편 검색 전체 플로우 |
+| `frontend/tests/e2e/hotel-direct-search.spec.ts` | 모든 정보가 포함된 호텔 직접 검색 |
+| `frontend/tests/e2e/hotel-detail-click.spec.ts` | 호텔 카드 클릭 → 상세 정보 조회 |
+| `frontend/tests/e2e/default-values.spec.ts` | 호텔 폼 기본값 자동 설정 확인 |
+| `frontend/tests/e2e/natural-language.spec.ts` | 폼 제출 시 자연어 메시지 변환 |
+| `frontend/tests/e2e/flight-form.spec.ts` | 항공편 폼 기본값 및 자동 입력 |
+| `frontend/tests/e2e/form-submit.spec.ts` | 호텔 폼 제출 후 결과 표시 |
+| `frontend/tests/e2e/form-values.spec.ts` | 호텔 폼 입력값과 제출 상태 확인 |
+| `frontend/tests/e2e/assistant-response-check.spec.ts` | 툴 호출/폼 렌더링 응답 검증 |
+| `frontend/tests/e2e/response-capture.spec.ts` | `/agui/run` SSE 응답 캡처 검증 |
 
 ### 아티팩트
 

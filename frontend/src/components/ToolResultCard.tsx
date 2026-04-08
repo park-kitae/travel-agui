@@ -1,7 +1,7 @@
-import { Hotel, Flight, ToolSnapshot, HotelSearchResult, FlightSearchResult, TravelTipsResult, HotelDetailResult, RoomType } from '../types'
+import { Hotel, Flight, ToolResultSnapshot, HotelSearchResult, FlightSearchResult, TravelTipsResult, HotelDetailResult, RoomType } from '../types'
 // hotel click enabled
 interface Props {
-  snapshot: ToolSnapshot
+  snapshot: ToolResultSnapshot
   onHotelClick?: (hotelCode: string, hotelName: string) => void
 }
 
