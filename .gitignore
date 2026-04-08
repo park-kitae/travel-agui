@@ -17,6 +17,7 @@ node_modules/
 # ── 에디터 / IDE ─────────────────────────────────
 .vscode
 .claude
+.windsurf
 
 # ── 테스트 산출물 ────────────────────────────────
 tests/screenshots/*.png

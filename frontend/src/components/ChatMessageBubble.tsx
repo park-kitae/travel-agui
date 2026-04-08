@@ -1,4 +1,4 @@
-import { ChatMessage as ChatMessageType } from '../types'
+import { ChatMessage as ChatMessageType, ToolResultSnapshot } from '../types'
 import { ToolCallIndicator } from './ToolCallIndicator'
 import { ToolResultCard } from './ToolResultCard'
 import { UserInputForm } from './UserInputForm'
@@ -44,7 +44,7 @@ export function ChatMessageBubble({ message, onFormSubmit, onHotelClick }: Props
         {!isUser && message.snapshots.length > 0 && (
           <div className="snapshots">
             {message.snapshots.map((snap, i) => (
-              <ToolResultCard key={i} snapshot={snap} onHotelClick={onHotelClick} />
+              <ToolResultCard key={i} snapshot={snap as ToolResultSnapshot} onHotelClick={onHotelClick} />
             ))}
           </div>
         )}
