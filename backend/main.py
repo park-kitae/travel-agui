@@ -281,7 +281,13 @@ async def run_agent(request: Request):
     # travel_context가 있으면 에이전트 메시지 앞에 컨텍스트 블록을 주입
     # → 호텔 조회 후 항공편 문의 시(또는 반대) 기존 날짜·인원 자동 재사용
     travel_context: dict = client_state.get("travel_context") or {}
+    ui_context: dict = client_state.get("ui_context") or {}
     ctx_lines = []
+
+    selected_hotel_code = ui_context.get("selected_hotel_code")
+    if selected_hotel_code:
+        ctx_lines.append(f"- 선택된 호텔 코드: {selected_hotel_code}")
+
     if travel_context.get("destination"):
         ctx_lines.append(f"- 목적지: {travel_context['destination']}")
     if travel_context.get("origin"):

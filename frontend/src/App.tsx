@@ -45,7 +45,7 @@ export default function App() {
 
   const handleHotelClick = (hotelCode: string, hotelName: string) => {
     updateUiContext({ selected_hotel_code: hotelCode, current_view: 'hotel_detail' })
-    interruptAndSend(`${hotelName}(${hotelCode}) 호텔의 상세 정보를 알려줘`)
+    interruptAndSend(`${hotelName} 호텔의 상세 정보를 알려줘`)
   }
 
   const handleFormSubmit = (messageId: string, data: Record<string, string>) => {

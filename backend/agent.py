@@ -747,11 +747,16 @@ def create_travel_agent() -> LlmAgent:
   ※ 기존 컨텍스트 값을 재사용할 때는 사용자에게 "기존 일정을 적용했습니다"라고 안내
 
 - 여행지 정보 → get_travel_tips(destination)
-- 호텔 상세 정보 문의 시 (호텔 코드 형식: HTL-XXX-000) → get_hotel_detail(hotel_code)
+- 호텔 상세 정보 문의 시 → get_hotel_detail(hotel_code)
+
+호텔 상세 조회 방법 (우선순위 순):
+1) 컨텍스트에 "선택된 호텔 코드"가 있음 → 해당 코드로 get_hotel_detail(hotel_code) 호출
+2) 메시지에 호텔 코드(HTL-XXX-000 형식)가 있음 → 해당 코드로 get_hotel_detail(hotel_code) 호출
+3) 호텔 이름만 있고 코드가 없음 → 사용자에게 호텔 코드를 요청
 
 호텔 상세 조회 예시:
+- 컨텍스트: "선택된 호텔 코드: HTL-SEO-001", 사용자: "이 호텔 상세 정보" → get_hotel_detail("HTL-SEO-001")
 - "HTL-SEO-001 호텔 상세 정보 알려줘" → get_hotel_detail("HTL-SEO-001")
-- 사용자가 호텔 코드를 언급하면 반드시 get_hotel_detail을 호출합니다
 
 시나리오 예시:
 - "서울 호텔 알려줘" (컨텍스트 없음)

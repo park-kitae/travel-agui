@@ -27,7 +27,7 @@ export function ToolResultCard({ snapshot, onHotelClick }: Props) {
 function HotelCard({ data, onHotelClick }: { data: HotelSearchResult; onHotelClick?: (hotelCode: string, hotelName: string) => void }) {
   if (data.status !== 'success' || !data.hotels?.length) return null
   return (
-    <div className="tool-card">
+    <div className="tool-card hotel-result-card">
       <div className="tool-card-header">
         <span className="tool-icon">🏨</span>
         <span className="tool-title">
@@ -38,32 +38,66 @@ function HotelCard({ data, onHotelClick }: { data: HotelSearchResult; onHotelCli
         </span>
       </div>
       {onHotelClick && (
-        <div className="hotel-click-hint">👆 호텔을 클릭하면 상세 정보를 볼 수 있습니다</div>
+        <div className="hotel-scroll-hint">
+          <span className="scroll-hint-icon">←</span>
+          <span>좌우로 스크롤하여 더 많은 호텔을 확인하세요</span>
+          <span className="scroll-hint-icon">→</span>
+        </div>
       )}
-      <div className="hotel-grid">
-        {data.hotels!.map((h, i) => (
-          <HotelItem key={i} hotel={h} onHotelClick={onHotelClick} />
-        ))}
+      <div className="hotel-scroll-container">
+        <div className="hotel-scroll-track">
+          {data.hotels!.map((h, i) => (
+            <HotelItem key={i} hotel={h} onHotelClick={onHotelClick} index={i} />
+          ))}
+        </div>
       </div>
     </div>
   )
 }
 
-function HotelItem({ hotel, onHotelClick }: { hotel: Hotel; onHotelClick?: (hotelCode: string, hotelName: string) => void }) {
+function HotelItem({ hotel, onHotelClick, index }: { hotel: Hotel; onHotelClick?: (hotelCode: string, hotelName: string) => void; index: number }) {
   const clickable = !!onHotelClick
+  const gradients = [
+    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+    'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+    'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+    'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+  ]
+  const gradient = gradients[index % gradients.length]
+
   return (
     <div
-      className={`hotel-item${clickable ? ' clickable-hotel' : ''}`}
+      className={`hotel-card${clickable ? ' clickable' : ''}`}
       onClick={clickable ? () => onHotelClick(hotel.hotel_code, hotel.name) : undefined}
     >
-      <div className="hotel-stars">{'★'.repeat(hotel.stars)}{'☆'.repeat(5 - hotel.stars)}</div>
-      <div className="hotel-name">{hotel.name}</div>
-      <div className="hotel-area">{hotel.area}</div>
-      <div className="hotel-footer">
-        <span className="hotel-rating">⭐ {hotel.rating}</span>
-        <span className="hotel-price">{hotel.price.toLocaleString()}원<small>/박</small></span>
+      <div className="hotel-card-image">
+        <div className="hotel-image-placeholder" style={{ background: gradient }}>
+          <span className="hotel-emoji">🏨</span>
+        </div>
+        <div className="hotel-stars-badge">{'★'.repeat(hotel.stars)}</div>
+        {clickable && <div className="hotel-hover-overlay">상세 보기 →</div>}
       </div>
-      {clickable && <div className="hotel-detail-cta">상세 정보 보기 →</div>}
+      <div className="hotel-card-content">
+        <div className="hotel-card-main">
+          <h4 className="hotel-card-name">{hotel.name}</h4>
+          <p className="hotel-card-area">{hotel.area}</p>
+        </div>
+        <div className="hotel-card-stats">
+          <div className="hotel-stat-item">
+            <span className="hotel-stat-icon">⭐</span>
+            <span className="hotel-stat-value">{hotel.rating}</span>
+          </div>
+          <div className="hotel-stat-item">
+            <span className="hotel-stat-icon">🎯</span>
+            <span className="hotel-stat-value">{hotel.stars}성급</span>
+          </div>
+        </div>
+        <div className="hotel-card-price">
+          <span className="price-value">{hotel.price.toLocaleString()}</span>
+          <span className="price-unit">원/박</span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -73,7 +107,6 @@ function HotelDetailCard({ data }: { data: HotelDetailResult }) {
   if (data.status !== 'success') return null
   return (
     <div className="tool-card hotel-detail-card">
-      {/* 헤더 */}
       <div className="tool-card-header">
         <span className="tool-icon">🏨</span>
         <div className="hotel-detail-header-body">
@@ -83,17 +116,14 @@ function HotelDetailCard({ data }: { data: HotelDetailResult }) {
         <span className="tool-meta">{data.city} · {data.area}</span>
       </div>
 
-      {/* 평점 & 연락처 */}
       <div className="hotel-detail-meta-row">
         <span className="hotel-detail-rating">⭐ {data.rating} / 5.0</span>
         <span className="hotel-detail-address">📍 {data.address}</span>
         <span className="hotel-detail-phone">📞 {data.phone}</span>
       </div>
 
-      {/* 설명 */}
       <div className="hotel-detail-description">{data.description}</div>
 
-      {/* 하이라이트 */}
       {data.highlights && data.highlights.length > 0 && (
         <div className="hotel-detail-section">
           <div className="hotel-detail-section-title">✨ 주요 특징</div>
@@ -105,7 +135,6 @@ function HotelDetailCard({ data }: { data: HotelDetailResult }) {
         </div>
       )}
 
-      {/* 객실 타입 */}
       {data.room_types && data.room_types.length > 0 && (
         <div className="hotel-detail-section">
           <div className="hotel-detail-section-title">🛏️ 객실 타입</div>
@@ -117,7 +146,6 @@ function HotelDetailCard({ data }: { data: HotelDetailResult }) {
         </div>
       )}
 
-      {/* 편의시설 */}
       {data.amenities && data.amenities.length > 0 && (
         <div className="hotel-detail-section">
           <div className="hotel-detail-section-title">🎯 편의시설</div>
@@ -129,7 +157,6 @@ function HotelDetailCard({ data }: { data: HotelDetailResult }) {
         </div>
       )}
 
-      {/* 체크인/아웃 & 취소 정책 */}
       <div className="hotel-detail-policies">
         <div className="hotel-policy-item">
           <span className="hotel-policy-label">체크인</span>
