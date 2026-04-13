@@ -48,16 +48,8 @@ from ag_ui.core.events import (
     StateSnapshotEvent,
     EventType,
 )
-from pydantic import BaseModel, Field
-from typing import Literal
-
-# USER_INPUT_REQUEST 이벤트 정의
-class UserInputRequestEvent(BaseModel):
-    type: Literal["USER_INPUT_REQUEST"] = "USER_INPUT_REQUEST"
-    request_id: str = Field(..., description="요청 ID")
-    input_type: str = Field(..., description="입력 타입")
-    fields: list[dict] = Field(..., description="폼 필드 정의")
 from ag_ui.encoder.encoder import EventEncoder
+from models import UserInputRequestEvent
 
 # ──────────────────────────────────────────────
 load_dotenv()
