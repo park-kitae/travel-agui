@@ -1,7 +1,7 @@
 import pytest
 import uuid
 from datetime import date
-from a2a_server import _extract_travel_context, _extract_agent_status
+from context_extractor import _extract_travel_context, _extract_agent_status
 
 def test_extract_travel_context_search_hotels():
     args = {
