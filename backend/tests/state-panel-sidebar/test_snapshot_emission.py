@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from a2a_server import ADKAgentExecutor
+from executor import ADKAgentExecutor
 
 
 def _make_adk_function_call_event(tool_name: str, args: dict):

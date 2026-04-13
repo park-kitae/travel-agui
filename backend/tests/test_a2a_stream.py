@@ -6,7 +6,7 @@ import json
 import pytest
 from unittest.mock import MagicMock
 
-from main import a2a_to_agui_stream
+from converter import a2a_to_agui_stream
 
 
 def make_text_artifact(text: str, last_chunk: bool = True):
