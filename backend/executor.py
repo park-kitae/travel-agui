@@ -14,7 +14,7 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types as adk_types
 
-from context_extractor import extract_travel_context, extract_agent_status
+from state import state_manager
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,6 @@ class ADKAgentExecutor(AgentExecutor):
         # ── ADK 실행 & 이벤트 변환 ─────────────────
         artifact_id = str(uuid.uuid4())
         has_text = False
-        tool_call_map: dict[str, str] = {}  # function name → tool_call_id
 
         try:
             async for adk_event in self._runner.run_async(
@@ -97,30 +96,24 @@ class ADKAgentExecutor(AgentExecutor):
                     # 함수 호출 (Tool Call 시작) → agent_state STATE_SNAPSHOT 먼저 발행 후 TOOL_CALL_START
                     elif hasattr(part, "function_call") and part.function_call:
                         fc = part.function_call
-                        tc_id = str(uuid.uuid4())
-                        tool_call_map[fc.name] = tc_id
                         args_dict = dict(fc.args) if fc.args else {}
 
                         # agent_state STATE_SNAPSHOT 먼저 발행 (TOOL_CALL_START 전)
-                        travel_ctx = extract_travel_context(fc.name, args_dict)
-                        agent_status = extract_agent_status(fc.name, args_dict)
-                        await event_queue.enqueue_event(
-                            TaskArtifactUpdateEvent(
-                                task_id=task_id,
-                                context_id=context_id,
-                                artifact=Artifact(
-                                    artifact_id=str(uuid.uuid4()),
-                                    parts=[Part(root=DataPart(data={
-                                        "snapshot_type": "agent_state",
-                                        "travel_context": travel_ctx,
-                                        "agent_status": agent_status,
-                                    }))],
-                                ),
-                                append=False,
-                                last_chunk=False,
+                        async for snap_event in state_manager.apply_tool_call(context_id, fc.name, args_dict):
+                            await event_queue.enqueue_event(
+                                TaskArtifactUpdateEvent(
+                                    task_id=task_id,
+                                    context_id=context_id,
+                                    artifact=Artifact(
+                                        artifact_id=str(uuid.uuid4()),
+                                        parts=[Part(root=DataPart(data=snap_event.snapshot))],
+                                    ),
+                                    append=False,
+                                    last_chunk=False,
+                                )
                             )
-                        )
 
+                        tc_id = state_manager.get_tc_id(context_id, fc.name)
                         await event_queue.enqueue_event(
                             TaskArtifactUpdateEvent(
                                 task_id=task_id,
@@ -140,11 +133,9 @@ class ADKAgentExecutor(AgentExecutor):
                         )
 
                     # 함수 응답 (Tool Call 종료 + 결과)
-                    # 1) TOOL_CALL_END DataPart → main.py가 TOOL_CALL_END 이벤트 발행
-                    # 2) tool result DataPart  → main.py가 STATE_SNAPSHOT 또는 USER_INPUT_REQUEST 이벤트 발행
                     elif hasattr(part, "function_response") and part.function_response:
                         fr = part.function_response
-                        tc_id = tool_call_map.get(fr.name, str(uuid.uuid4()))
+                        tc_id = state_manager.get_tc_id(context_id, fr.name)
 
                         # TOOL_CALL_END 신호
                         await event_queue.enqueue_event(
@@ -163,45 +154,17 @@ class ADKAgentExecutor(AgentExecutor):
                             )
                         )
 
-                        # 도구 결과 처리
                         if fr.response:
-                            logger.info(f"[DEBUG] {fr.name} fr.response type={type(fr.response).__name__} keys={list(fr.response.keys()) if isinstance(fr.response, dict) else 'N/A'}")
-                            if isinstance(fr.response, dict) and 'hotels' in fr.response:
-                                logger.info(f"[DEBUG] first hotel keys={list(fr.response['hotels'][0].keys()) if fr.response['hotels'] else 'empty'}")
+                            logger.info(f"[DEBUG] {fr.name} response type={type(fr.response).__name__}")
                             response_data = fr.response if isinstance(fr.response, dict) else {"raw": str(fr.response)}
-
-                            # request_user_input 툴인 경우 USER_INPUT_REQUEST 이벤트 생성
-                            if fr.name == "request_user_input" and response_data.get("status") == "user_input_required":
+                            async for snap_event in state_manager.apply_tool_result(context_id, fr.name, response_data):
                                 await event_queue.enqueue_event(
                                     TaskArtifactUpdateEvent(
                                         task_id=task_id,
                                         context_id=context_id,
                                         artifact=Artifact(
                                             artifact_id=str(uuid.uuid4()),
-                                            parts=[Part(root=DataPart(data={
-                                                "_agui_event": "USER_INPUT_REQUEST",
-                                                "request_id": str(uuid.uuid4()),
-                                                "input_type": response_data.get("input_type", ""),
-                                                "fields": response_data.get("fields", []),
-                                            }))],
-                                        ),
-                                        append=False,
-                                        last_chunk=False,
-                                    )
-                                )
-                            else:
-                                # 일반 도구 결과 → STATE_SNAPSHOT (snapshot_type: "tool_result" 포함)
-                                await event_queue.enqueue_event(
-                                    TaskArtifactUpdateEvent(
-                                        task_id=task_id,
-                                        context_id=context_id,
-                                        artifact=Artifact(
-                                            artifact_id=str(uuid.uuid4()),
-                                            parts=[Part(root=DataPart(data={
-                                                "snapshot_type": "tool_result",
-                                                "tool": fr.name,
-                                                "result": response_data,
-                                            }))],
+                                            parts=[Part(root=DataPart(data=snap_event.snapshot))],
                                         ),
                                         append=False,
                                         last_chunk=False,
