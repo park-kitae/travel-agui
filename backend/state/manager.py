@@ -3,6 +3,7 @@ state/manager.py — thread_id 기준 세션별 TravelState 관리 및 이벤트
 """
 import uuid
 import logging
+from datetime import date
 from collections.abc import AsyncGenerator
 from dataclasses import replace, asdict
 
@@ -68,8 +69,6 @@ class StateManager:
         executor.py에서 function_call 감지 시 호출 (TOOL_CALL_START 발행 전).
         caller(executor.py)는 event.snapshot을 DataPart로 래핑 후 event_queue에 enqueue한다.
         """
-        from datetime import date
-
         current = self._store.get(thread_id, TravelState())
         tc = current.travel_context
 
@@ -90,12 +89,14 @@ class StateManager:
                 nights=nights or tc.nights,
             )
         elif tool_name == "search_flights":
+            explicit_trip_type = args.get("trip_type")
+            inferred_trip_type = "round_trip" if args.get("return_date") else "one_way"
             tc = replace(tc,
                 origin=args.get("origin") or tc.origin,
                 destination=args.get("destination") or tc.destination,
                 check_in=args.get("departure_date") or tc.check_in,
                 guests=args.get("passengers") or tc.guests,
-                trip_type="round_trip" if args.get("return_date") else "one_way",
+                trip_type=explicit_trip_type or inferred_trip_type,
             )
         elif tool_name == "get_travel_tips":
             tc = replace(tc, destination=args.get("destination") or tc.destination)

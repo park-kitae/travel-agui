@@ -49,8 +49,7 @@ async def test_apply_client_state_empty_raw_state_yields_no_event(manager):
     assert events == []
 
 
-@pytest.mark.asyncio
-async def test_get_returns_empty_state_for_unknown_thread(manager):
+def test_get_returns_empty_state_for_unknown_thread(manager):
     state = manager.get("unknown-thread")
     assert state == TravelState()
 
@@ -84,6 +83,18 @@ async def test_apply_tool_call_search_flights_updates_travel_context(manager):
     assert snap["travel_context"]["destination"] == "후쿠오카"
     assert snap["travel_context"]["trip_type"] == "round_trip"
     assert snap["agent_status"]["current_intent"] == "searching"
+
+
+@pytest.mark.asyncio
+async def test_apply_tool_call_search_flights_one_way(manager):
+    args = {
+        "origin": "서울", "destination": "도쿄",
+        "departure_date": "2026-10-01", "passengers": 1,
+        # no return_date
+    }
+    events = [e async for e in manager.apply_tool_call("thread-13", "search_flights", args)]
+    snap = events[0].snapshot
+    assert snap["travel_context"]["trip_type"] == "one_way"
 
 
 @pytest.mark.asyncio
