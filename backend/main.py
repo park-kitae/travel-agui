@@ -37,6 +37,7 @@ from ag_ui.core.events import (
     EventType,
 )
 from converter import a2a_to_agui_stream, encoder
+from state import state_manager
 
 # ──────────────────────────────────────────────
 load_dotenv()
@@ -95,42 +96,6 @@ async def run_agent(request: Request):
     if not user_message:
         user_message = "안녕하세요"
 
-    # client_state 추출 (RunAgentInput.state 필드, 없으면 빈 dict)
-    client_state: dict = {}
-    raw_state = body.get("state")
-    if isinstance(raw_state, dict) and raw_state:
-        client_state = raw_state
-
-    # travel_context가 있으면 에이전트 메시지 앞에 컨텍스트 블록을 주입
-    # → 호텔 조회 후 항공편 문의 시(또는 반대) 기존 날짜·인원 자동 재사용
-    travel_context: dict = client_state.get("travel_context") or {}
-    ui_context: dict = client_state.get("ui_context") or {}
-    ctx_lines = []
-
-    selected_hotel_code = ui_context.get("selected_hotel_code")
-    if selected_hotel_code:
-        ctx_lines.append(f"- 선택된 호텔 코드: {selected_hotel_code}")
-
-    if travel_context.get("destination"):
-        ctx_lines.append(f"- 목적지: {travel_context['destination']}")
-    if travel_context.get("origin"):
-        ctx_lines.append(f"- 출발지: {travel_context['origin']}")
-    if travel_context.get("check_in"):
-        ctx_lines.append(f"- 체크인/출발일: {travel_context['check_in']}")
-    if travel_context.get("check_out"):
-        ctx_lines.append(f"- 체크아웃/귀국일: {travel_context['check_out']}")
-    if travel_context.get("nights"):
-        ctx_lines.append(f"- 숙박: {travel_context['nights']}박")
-    if travel_context.get("guests"):
-        ctx_lines.append(f"- 인원: {travel_context['guests']}명")
-    if travel_context.get("trip_type"):
-        ctx_lines.append(f"- 여행 유형: {travel_context['trip_type']}")
-
-    if ctx_lines:
-        context_block = "[현재 여행 컨텍스트 - 이미 확인된 정보]\n" + "\n".join(ctx_lines)
-        user_message = f"{context_block}\n\n사용자 요청: {user_message}"
-        logger.info(f"[{thread_id}] 여행 컨텍스트 주입: {ctx_lines}")
-
     logger.info(f"[{thread_id}] 사용자 입력: {user_message[:80]}")
 
     async def event_stream() -> AsyncGenerator[str, None]:
@@ -140,6 +105,37 @@ async def run_agent(request: Request):
             run_id=run_id,
             thread_id=thread_id,
         ))
+
+        # 2. 클라이언트 state 반영
+        raw_state = body.get("state") or {}
+        async for snap_event in state_manager.apply_client_state(thread_id, raw_state):
+            yield encoder.encode(snap_event)
+
+        # 3. 컨텍스트 주입 (최신 state 조회)
+        state = state_manager.get(thread_id)
+        tc = state.travel_context
+        ui = state.ui_context
+        ctx_lines = []
+        if ui.selected_hotel_code:
+            ctx_lines.append(f"- 선택된 호텔 코드: {ui.selected_hotel_code}")
+        if tc.destination:
+            ctx_lines.append(f"- 목적지: {tc.destination}")
+        if tc.origin:
+            ctx_lines.append(f"- 출발지: {tc.origin}")
+        if tc.check_in:
+            ctx_lines.append(f"- 체크인/출발일: {tc.check_in}")
+        if tc.check_out:
+            ctx_lines.append(f"- 체크아웃/귀국일: {tc.check_out}")
+        if tc.nights:
+            ctx_lines.append(f"- 숙박: {tc.nights}박")
+        if tc.guests:
+            ctx_lines.append(f"- 인원: {tc.guests}명")
+        if tc.trip_type:
+            ctx_lines.append(f"- 여행 유형: {tc.trip_type}")
+        if ctx_lines:
+            context_block = "[현재 여행 컨텍스트 - 이미 확인된 정보]\n" + "\n".join(ctx_lines)
+            user_message = f"{context_block}\n\n사용자 요청: {user_message}"
+            logger.info(f"[{thread_id}] 여행 컨텍스트 주입: {ctx_lines}")
 
         try:
             async with httpx.AsyncClient(timeout=120.0) as http_client:
@@ -151,15 +147,13 @@ async def run_agent(request: Request):
                 agent_card = AgentCard.model_validate(card_resp.json())
                 a2a_client = A2AClient(httpx_client=http_client, agent_card=agent_card)
 
-                # 3. A2A 스트리밍 요청 (client_state를 metadata로 전달)
+                # 3. A2A 스트리밍 요청
                 msg_kwargs: dict = {
                     "role": Role.user,
                     "parts": [Part(root=TextPart(text=user_message))],
                     "message_id": str(uuid.uuid4()),
                     "context_id": thread_id,
                 }
-                if client_state:
-                    msg_kwargs["metadata"] = {"client_state": client_state}
 
                 a2a_request = SendStreamingMessageRequest(
                     id=str(uuid.uuid4()),
