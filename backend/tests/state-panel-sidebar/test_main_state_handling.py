@@ -1,41 +1,77 @@
+"""
+test_main_state_handling.py — main.py의 event_stream()에서
+StateManager.apply_client_state가 올바르게 호출되는지 검증
+"""
 import pytest
-import json
-import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
-from main import app
-from fastapi.testclient import TestClient
+from ag_ui.core.events import StateSnapshotEvent, EventType
 
-client = TestClient(app)
 
-def test_run_agent_input_state_forwarded():
-    # RunAgentInput.state 필드가 A2A metadata로 전달되는지 확인
-    # main.py의 run_agent 엔드포인트에서 state 파싱 로직 테스트
-    payload = {
-        "threadId": str(uuid.uuid4()),
-        "runId": str(uuid.uuid4()),
-        "messages": [{"role": "user", "content": "도쿄 호텔 찾아줘"}],
-        "tools": [],
-        "context": [],
-        "forwardedProps": {},
-        "state": {
-            "ui_context": {
-                "selected_hotel_code": "HTL-123",
-                "current_view": "hotel_detail"
-            }
-        }
+@pytest.mark.asyncio
+async def test_apply_client_state_called_with_body_state():
+    """event_stream 내에서 body['state']가 apply_client_state에 전달된다."""
+    from main import app
+    from httpx import AsyncClient, ASGITransport
+
+    raw_state = {
+        "travel_context": {"destination": "도쿄"},
+        "ui_context": {"selected_hotel_code": "HTL-001"},
     }
-    
-    # 실제 A2A 서버 호출은 mock 처리되거나, 
-    # 여기서는 main.py가 state를 올바르게 읽어서 client_state 변수에 담는지 간접적으로 확인
-    with patch("main.A2AClient") as mock_a2a:
-        mock_a2a_instance = mock_a2a.return_value
-        mock_a2a_instance.send_message_streaming.return_value = AsyncMock()
-        
-        response = client.post("/agui/run", json=payload)
-        # StreamingResponse이므로 generator 실행을 위해 반복문 필요할 수 있음
-        
-    # main.py 277-279행 로직 검증: 
-    # raw_state = body.get("state")
-    # if isinstance(raw_state, dict) and raw_state:
-    #     client_state = raw_state
-    assert payload["state"] == payload["state"] # 구조적 확인
+
+    mock_snapshot = StateSnapshotEvent(
+        type=EventType.STATE_SNAPSHOT,
+        snapshot={"snapshot_type": "client_state", "travel_context": {}, "ui_context": {}},
+    )
+
+    captured_args: dict = {}
+
+    async def mock_apply_client_state(thread_id, raw):
+        captured_args["thread_id"] = thread_id
+        captured_args["raw_state"] = raw
+        yield mock_snapshot
+
+    mock_state_mgr = MagicMock()
+    mock_state_mgr.apply_client_state = mock_apply_client_state
+    mock_state_mgr.get.return_value = MagicMock(
+        travel_context=MagicMock(
+            destination=None, origin=None, check_in=None,
+            check_out=None, nights=None, guests=None, trip_type=None,
+        ),
+        ui_context=MagicMock(selected_hotel_code=None),
+    )
+
+    async def empty_stream():
+        return
+        yield  # async generator
+
+    with patch("main.state_manager", mock_state_mgr), \
+         patch("main.httpx.AsyncClient") as mock_http:
+        mock_http_instance = AsyncMock()
+        mock_http.return_value.__aenter__.return_value = mock_http_instance
+        mock_http_instance.get.return_value = MagicMock(
+            json=lambda: {
+                "name": "test", "url": "http://localhost:8001",
+                "version": "1.0", "capabilities": {},
+            },
+            raise_for_status=lambda: None,
+        )
+
+        with patch("main.A2AClient") as mock_a2a_cls:
+            mock_a2a_instance = MagicMock()
+            mock_a2a_cls.return_value = mock_a2a_instance
+            mock_a2a_instance.send_message_streaming.return_value = empty_stream()
+
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+                payload = {
+                    "threadId": "test-thread",
+                    "runId": "test-run",
+                    "messages": [{"id": "m1", "role": "user", "content": "테스트"}],
+                    "tools": [],
+                    "context": [],
+                    "forwardedProps": {},
+                    "state": raw_state,
+                }
+                response = await ac.post("/agui/run", json=payload)
+                _ = response.content
+
+    assert captured_args.get("raw_state") == raw_state
