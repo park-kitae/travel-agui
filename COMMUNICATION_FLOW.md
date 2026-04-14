@@ -364,7 +364,7 @@ export function ToolResultCard({ result }: { result: any }) {
 
 ### 3. AG-UI Gateway Layer (FastAPI)
 
-#### 2.1 요청 수신 및 A2A 호출
+#### 3.1 요청 수신 및 A2A 호출
 
 **파일**: `backend/main.py`
 
