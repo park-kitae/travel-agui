@@ -99,6 +99,7 @@ async def run_agent(request: Request):
     logger.info(f"[{thread_id}] 사용자 입력: {user_message[:80]}")
 
     async def event_stream() -> AsyncGenerator[str, None]:
+        nonlocal user_message  # 외부 스코프의 user_message 사용
         # 1. RUN_STARTED
         yield encoder.encode(RunStartedEvent(
             type=EventType.RUN_STARTED,

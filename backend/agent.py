@@ -101,18 +101,18 @@ STEP 2 — 상세 정보 수집 및 검색:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 - 호텔 문의 시:
   1) 날짜·인원 정보가 없고 기존 컨텍스트도 없음
-     → request_user_input("hotel_booking_details", "", '{"city":"도시명"}')
-     (도시도 모르면 context를 "" 또는 '{}' 로 전달)
+     → request_user_input("hotel_booking_details", "", '{{"city":"도시명"}}')
+     (도시도 모르면 context를 "" 또는 '{{}}' 로 전달)
   2) 날짜·인원 정보가 없지만 기존 컨텍스트에 날짜·인원이 있음
-     → request_user_input("hotel_booking_details", "", '{"city":"도시명","check_in":"YYYY-MM-DD","check_out":"YYYY-MM-DD","guests":N}')
+     → request_user_input("hotel_booking_details", '', '{{"city":"도시명","check_in":"YYYY-MM-DD","check_out":"YYYY-MM-DD","guests":N}}')
      (기존 값을 context JSON에 그대로 담아서 전달 → 폼 필드에 자동 pre-fill)
   3) 모든 정보 있음 → search_hotels(city, check_in, check_out, guests)
 
 - 항공편 문의 시:
   1) 날짜·인원 정보가 없고 기존 컨텍스트도 없음
-     → request_user_input("flight_booking_details", "", '{"origin":"출발지","destination":"목적지"}')
+     → request_user_input("flight_booking_details", '', '{{"origin":"출발지","destination":"목적지"}}')
   2) 날짜·인원 정보가 없지만 기존 컨텍스트에 날짜·인원이 있음 (호텔 검색 이후 등)
-     → request_user_input("flight_booking_details", "", '{"origin":"서울","destination":"도시명","departure_date":"YYYY-MM-DD","return_date":"YYYY-MM-DD","passengers":N}')
+     → request_user_input("flight_booking_details", '', '{{"origin":"서울","destination":"도시명","departure_date":"YYYY-MM-DD","return_date":"YYYY-MM-DD","passengers":N}}')
      (체크인→departure_date, 체크아웃→return_date, guests→passengers 로 변환해서 전달)
   3) 모든 정보 있음 → search_flights(origin, destination, departure_date, passengers, return_date)
 
@@ -133,7 +133,7 @@ STEP 2 — 상세 정보 수집 및 검색:
 
 시나리오 예시:
 - "서울 호텔 알려줘" (컨텍스트 없음)
-  → request_user_input("hotel_booking_details", "", '{"city":"서울"}')
+  → request_user_input("hotel_booking_details", '', '{{"city":"서울"}}')
 
 - "도쿄 6월 10일~14일 2명 호텔" (정보 완전)
   → search_hotels("도쿄", "2026-06-10", "2026-06-14", 2)
@@ -141,10 +141,10 @@ STEP 2 — 상세 정보 수집 및 검색:
 - 기존 컨텍스트(체크인 2026-06-10, 체크아웃 2026-06-14, 인원 2) + "항공편도 알려줘"
   → search_flights("서울", "도쿄", "2026-06-10", 2, "2026-06-14")  (정보 완전)
   또는 목적지만 모를 경우:
-  → request_user_input("flight_booking_details", "", '{"origin":"서울","departure_date":"2026-06-10","return_date":"2026-06-14","passengers":2}')
+  → request_user_input("flight_booking_details", '', '{{"origin":"서울","departure_date":"2026-06-10","return_date":"2026-06-14","passengers":2}}')
 
 - 기존 컨텍스트(출발 2026-07-01, 귀국 2026-07-08, 탑승 2명) + "호텔도 찾아줘"
-  → request_user_input("hotel_booking_details", "", '{"city":"목적지","check_in":"2026-07-01","check_out":"2026-07-08","guests":2}')
+  → request_user_input("hotel_booking_details", '', '{{"city":"목적지","check_in":"2026-07-01","check_out":"2026-07-08","guests":2}}')
 
 응답 형식:
 - 검색 결과는 간결하고 보기 좋게 정리해서 제공
