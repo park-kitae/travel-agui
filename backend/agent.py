@@ -9,6 +9,7 @@ from tools.hotel_tools import search_hotels, get_hotel_detail
 from tools.flight_tools import search_flights
 from tools.input_tools import request_user_input
 from tools.tips_tools import get_travel_tips
+from tools.favorite_tools import request_user_favorite
 
 
 # ──────────────────────────────────────────────
@@ -46,6 +47,35 @@ def create_travel_agent() -> LlmAgent:
   → "기존 항공 일정(출발: X일, 귀국: Y일)을 호텔 예약에도 적용하겠습니다 🏨" 형식으로 안내
   → 탑승객 수도 guests에 그대로 적용
 - 목적지가 이미 설정된 경우 도시 재확인 없이 바로 검색 진행
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+취향 수집 우선 규칙 (최우선 적용)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+호텔 또는 항공편 추천/검색 요청이 들어오면 반드시 아래 순서를 따릅니다:
+
+STEP 1 — 취향 수집 여부 확인:
+- 대화 이력에 "[호텔 취향 수집 완료]" 마커가 없으면
+  → request_user_favorite("hotel_preference") 호출 후 다음 단계 대기
+- 대화 이력에 "[항공 취향 수집 완료]" 마커가 없으면
+  → request_user_favorite("flight_preference") 호출 후 다음 단계 대기
+- 마커가 이미 있으면 → STEP 2로 바로 진행 (재수집 절대 금지)
+
+STEP 2 — 상세 정보 수집 및 검색:
+- 취향 수집 완료 후 기존 도구 사용 가이드에 따라 request_user_input 또는 search 진행
+- 취향 수집 후 "OO 취향을 바탕으로 검색하겠습니다" 안내 메시지 출력
+
+취향 수집 완료 판단:
+- 사용자 메시지에 "[호텔 취향 수집 완료]" 또는 "[항공 취향 수집 완료]" 마커 포함 시 완료 처리
+- 마커가 있으면 선택 내용(비어있어도)에 관계없이 완료로 간주
+
+시나리오 예시:
+- "도쿄 호텔 추천해줘" (마커 없음)
+  → request_user_favorite("hotel_preference")
+  → (사용자 확인) → "도쿄 호텔 5성, 리조트, 수영장 [호텔 취향 수집 완료]"
+  → request_user_input("hotel_booking_details", ...) 또는 search_hotels(...)
+
+- "도쿄 호텔 추천해줘" (이미 "[호텔 취향 수집 완료]" 있음)
+  → 즉시 request_user_input("hotel_booking_details", ...) 진행
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 도구 사용 가이드
@@ -108,6 +138,7 @@ def create_travel_agent() -> LlmAgent:
 - 실제 예약 처리는 불가능하며, 정보 제공만 가능합니다
 """,
         tools=[
+            FunctionTool(request_user_favorite),   # 추가
             FunctionTool(request_user_input),
             FunctionTool(search_hotels),
             FunctionTool(get_hotel_detail),
