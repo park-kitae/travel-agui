@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { useAGUIChat } from './hooks/useAGUIChat'
 import { ChatMessageBubble } from './components/ChatMessageBubble'
 import { StatePanel } from './components/StatePanel'
+import { FavoritePanel } from './components/FavoritePanel'
 
 const SUGGESTIONS = [
   '도쿄 호텔 추천해줘 (6월 10일~14일, 2명)',
@@ -11,7 +12,12 @@ const SUGGESTIONS = [
 ]
 
 export default function App() {
-  const { messages, isRunning, error, agentState, uiContext, updateUiContext, sendMessage, interruptAndSend, stopStreaming, clearMessages, markFormSubmitted } = useAGUIChat()
+  const {
+  messages, isRunning, error, agentState, uiContext, updateUiContext,
+  pendingFavoriteRequest,
+  sendMessage, interruptAndSend, stopStreaming, clearMessages,
+  markFormSubmitted, submitFavorite,
+} = useAGUIChat()
   const [input, setInput] = useState('')
   // 모바일(<1024px)에서는 기본으로 닫음, 데스크톱에서는 열림
   const [statePanelOpen, setStatePanelOpen] = useState(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true)
@@ -105,6 +111,11 @@ export default function App() {
     sendMessage(formattedMessage)
   }
 
+  const handleFavoriteSubmit = (_favoriteType: 'hotel_preference' | 'flight_preference', selections: Record<string, string | string[]>) => {
+    if (!pendingFavoriteRequest || isRunning) return
+    submitFavorite(pendingFavoriteRequest.favoriteType, selections)
+  }
+
   const isEmpty = messages.length === 0
 
   return (
@@ -171,6 +182,14 @@ export default function App() {
         </div>
       )}
 
+      {pendingFavoriteRequest && !pendingFavoriteRequest.submitted && (
+        <FavoritePanel
+          request={pendingFavoriteRequest}
+          onSubmit={handleFavoriteSubmit}
+          disabled={isRunning}
+        />
+      )}
+
       {/* 입력 영역 */}
       <footer className="input-area">
         <div className="input-inner">
@@ -182,12 +201,12 @@ export default function App() {
             onKeyDown={handleKeyDown}
             placeholder="여행 목적지, 날짜, 인원을 알려주세요... (Enter로 전송)"
             rows={1}
-            disabled={isRunning}
+            disabled={isRunning || Boolean(pendingFavoriteRequest && !pendingFavoriteRequest.submitted)}
           />
           <button
             className={`send-btn ${isRunning ? 'stop' : 'send'}`}
             onClick={isRunning ? stopStreaming : handleSend}
-            disabled={!isRunning && !input.trim()}
+            disabled={(!isRunning && !input.trim()) || Boolean(pendingFavoriteRequest && !pendingFavoriteRequest.submitted)}
           >
             {isRunning ? '■' : '↑'}
           </button>
