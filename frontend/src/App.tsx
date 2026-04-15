@@ -111,9 +111,9 @@ export default function App() {
     sendMessage(formattedMessage)
   }
 
-  const handleFavoriteSubmit = (_favoriteType: 'hotel_preference' | 'flight_preference', selections: Record<string, string | string[]>) => {
+  const handleFavoriteSubmit = (selections: Record<string, string | string[]>) => {
     if (!pendingFavoriteRequest || isRunning) return
-    submitFavorite(pendingFavoriteRequest.favoriteType, selections)
+    submitFavorite(pendingFavoriteRequest, selections)
   }
 
   const isEmpty = messages.length === 0

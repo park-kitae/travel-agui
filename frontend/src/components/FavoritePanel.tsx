@@ -3,7 +3,7 @@ import { FavoriteRequest, FavoriteOptionDef } from '../types'
 
 interface Props {
   request: FavoriteRequest
-  onSubmit: (favoriteType: 'hotel_preference' | 'flight_preference', selections: Record<string, string | string[]>) => void
+  onSubmit: (selections: Record<string, string | string[]>) => void
   disabled?: boolean
 }
 
@@ -26,7 +26,7 @@ export function FavoritePanel({ request, onSubmit, disabled }: Props) {
 
   const handleConfirm = () => {
     if (!disabled) {
-      onSubmit(request.favoriteType, selections)
+      onSubmit(selections)
     }
   }
 
