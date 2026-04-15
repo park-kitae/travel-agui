@@ -31,8 +31,23 @@ class AgentStatus:
 
 
 @dataclass(frozen=True)
+class UserPreferences:
+    """사용자 서비스별 취향 (세션 내 1회 수집)."""
+    # 호텔 취향
+    hotel_grade: str | None = None
+    hotel_type: str | None = None
+    amenities: tuple[str, ...] = ()
+    # 항공 취향
+    seat_class: str | None = None
+    seat_position: str | None = None
+    meal_preference: str | None = None
+    airline_preference: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class TravelState:
     """thread_id 기준 세션 전체 state."""
     travel_context: TravelContext = field(default_factory=TravelContext)
     ui_context: UIContext = field(default_factory=UIContext)
     agent_status: AgentStatus = field(default_factory=AgentStatus)
+    user_preferences: UserPreferences = field(default_factory=UserPreferences)

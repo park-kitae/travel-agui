@@ -56,3 +56,29 @@ def test_travel_state_replace():
     updated = replace(state, travel_context=new_ctx)
     assert updated.travel_context.destination == "제주"
     assert state.travel_context.destination is None  # 원본 불변
+
+
+def test_user_preferences_defaults():
+    from state.models import UserPreferences
+    prefs = UserPreferences()
+    assert prefs.hotel_grade is None
+    assert prefs.hotel_type is None
+    assert prefs.amenities == ()
+    assert prefs.seat_class is None
+    assert prefs.seat_position is None
+    assert prefs.meal_preference is None
+    assert prefs.airline_preference == ()
+
+
+def test_user_preferences_is_frozen():
+    from state.models import UserPreferences
+    prefs = UserPreferences(hotel_grade="5성")
+    with pytest.raises(FrozenInstanceError):
+        prefs.hotel_grade = "3성"  # type: ignore
+
+
+def test_travel_state_has_user_preferences():
+    from state.models import UserPreferences
+    state = TravelState()
+    assert hasattr(state, "user_preferences")
+    assert isinstance(state.user_preferences, UserPreferences)
