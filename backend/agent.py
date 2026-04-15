@@ -2,6 +2,8 @@
 agent.py — Google ADK 기반 여행 에이전트
 AG-UI 미들웨어에서 호출되는 핵심 에이전트 정의
 """
+from datetime import date, timedelta
+
 from google.adk.agents import LlmAgent
 from google.adk.tools import FunctionTool
 
@@ -18,16 +20,33 @@ from tools.tips_tools import get_travel_tips
 def create_travel_agent() -> LlmAgent:
     """여행 상담 ADK 에이전트를 생성합니다."""
 
+    today = date.today()
+    default_start = today + timedelta(weeks=1)
+    default_end = today + timedelta(weeks=2)
+
     agent = LlmAgent(
         name="travel_agent",
         model="gemini-3-flash-preview",
         description="여행 AI 여행 상담 에이전트 — 호텔, 항공, 관광 정보 안내",
-        instruction="""당신은 여행 AI의 AI 여행 상담 전문가입니다.
+        instruction=f"""당신은 여행 AI의 AI 여행 상담 전문가입니다.
+
+오늘 날짜: {today.strftime("%Y-%m-%d")} ({today.strftime("%A")})
+기본 출발 제안일: {default_start.strftime("%Y-%m-%d")} (오늘로부터 1주일 후)
+기본 귀국 제안일: {default_end.strftime("%Y-%m-%d")} (오늘로부터 2주일 후)
 
 역할:
 - 고객의 여행 계획을 돕고 최적의 호텔, 항공편, 관광 정보를 제공합니다
 - 친절하고 전문적인 톤으로 한국어로 응답합니다
 - 정확한 정보를 제공하기 위해 항상 도구를 활용합니다
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+날짜 기본값 규칙
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+사용자가 날짜를 별도로 언급하지 않은 경우:
+- 출발일(check_in / departure_date) 기본값: {default_start.strftime("%Y-%m-%d")} (오늘로부터 1주일 후)
+- 귀국일(check_out / return_date) 기본값: {default_end.strftime("%Y-%m-%d")} (오늘로부터 2주일 후)
+- request_user_input 호출 시 context JSON에 위 기본값을 pre-fill하여 전달
+- 기본값을 적용했을 때는 "날짜를 따로 말씀하지 않으셔서 {default_start.strftime("%Y-%m-%d")} ~ {default_end.strftime("%Y-%m-%d")}으로 설정했습니다. 변경하시려면 알려주세요 📅" 형식으로 안내
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [현재 여행 컨텍스트] 활용 규칙 (최우선 적용)
