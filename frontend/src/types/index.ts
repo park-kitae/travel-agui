@@ -91,18 +91,22 @@ export interface FavoriteOptionDef {
   choices: string[]
 }
 
+// 취향 타입 — 단일 정의 (여러 곳에 union 반복 방지)
+export const FAVORITE_TYPES = ['hotel_preference', 'flight_preference'] as const
+export type FavoriteType = typeof FAVORITE_TYPES[number]
+
 // 취향 요청 이벤트
 export interface UserFavoriteRequestEvent extends AGUIEvent {
   type: 'USER_FAVORITE_REQUEST'
   requestId: string
-  favoriteType: 'hotel_preference' | 'flight_preference'
+  favoriteType: FavoriteType
   options: Record<string, FavoriteOptionDef>
 }
 
 // 취향 요청 상태 (훅에서 관리)
 export interface FavoriteRequest {
   requestId: string
-  favoriteType: 'hotel_preference' | 'flight_preference'
+  favoriteType: FavoriteType
   options: Record<string, FavoriteOptionDef>
   submitted: boolean
 }
@@ -348,4 +352,23 @@ export interface RunAgentInput {
   tools: unknown[]
   context: unknown[]
   forwardedProps: Record<string, unknown>
+}
+
+// ── 이벤트 타입가드 (as 캐스팅 대신 사용) ────────────────
+export function isUserInputRequestEvent(e: AGUIEvent): e is UserInputRequestEvent {
+  return e.type === 'USER_INPUT_REQUEST'
+}
+
+export function isUserFavoriteRequestEvent(e: AGUIEvent): e is UserFavoriteRequestEvent {
+  return e.type === 'USER_FAVORITE_REQUEST'
+}
+
+export function isAgentStateSnapshot(s: ToolSnapshot): s is AgentStateSnapshot {
+  return (s as AgentStateSnapshot).snapshot_type === 'agent_state'
+}
+
+// session_prefs 기본값 (sendMessage 내부 하드코딩 방지)
+export const DEFAULT_SESSION_PREFS: SessionPrefs = {
+  currency: 'KRW',
+  language: 'ko',
 }
