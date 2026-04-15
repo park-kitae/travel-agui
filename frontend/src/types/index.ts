@@ -13,6 +13,7 @@ export type AGUIEventType =
   | 'TOOL_CALL_END'
   | 'STATE_SNAPSHOT'
   | 'USER_INPUT_REQUEST'
+  | 'USER_FAVORITE_REQUEST'
 
 export interface AGUIEvent {
   type: AGUIEventType
@@ -83,6 +84,40 @@ export interface UserInputRequestEvent extends AGUIEvent {
   fields: FormField[]
 }
 
+// 취향 옵션 정의
+export interface FavoriteOptionDef {
+  type: 'radio' | 'checkbox'
+  label: string
+  choices: string[]
+}
+
+// 취향 요청 이벤트
+export interface UserFavoriteRequestEvent extends AGUIEvent {
+  type: 'USER_FAVORITE_REQUEST'
+  requestId: string
+  favoriteType: 'hotel_preference' | 'flight_preference'
+  options: Record<string, FavoriteOptionDef>
+}
+
+// 취향 요청 상태 (훅에서 관리)
+export interface FavoriteRequest {
+  requestId: string
+  favoriteType: 'hotel_preference' | 'flight_preference'
+  options: Record<string, FavoriteOptionDef>
+  submitted: boolean
+}
+
+// 사용자 취향 (AgentState 일부)
+export interface UserPreferences {
+  hotel_grade?: string
+  hotel_type?: string
+  amenities?: string[]
+  seat_class?: string
+  seat_position?: string
+  meal_preference?: string
+  airline_preference?: string[]
+}
+
 // 폼 필드 정의
 export interface FormField {
   name: string
@@ -118,6 +153,7 @@ export interface AgentState {
   travel_context: TravelContext
   agent_status: AgentStatus
   last_updated: number
+  user_preferences: UserPreferences
 }
 
 export interface UIContext {

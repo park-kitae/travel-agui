@@ -290,9 +290,10 @@ function handleEvent(
             merged[key] = value
           }
           return {
-            travel_context: merged as AgentState['travel_context'],
+            travel_context: merged as unknown as AgentState['travel_context'],
             agent_status: s.agent_status,
             last_updated: Date.now(),
+            user_preferences: prev?.user_preferences ?? {},
           }
         })
       } else {
