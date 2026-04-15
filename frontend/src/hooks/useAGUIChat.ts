@@ -9,6 +9,8 @@ import {
   UIContext,
   ClientState,
   AgentStateSnapshot,
+  FavoriteRequest,
+  FavoriteOptionDef,
 } from '../types'
 
 const AGUI_ENDPOINT = '/agui/run'
@@ -29,6 +31,7 @@ export function useAGUIChat() {
   const [error, setError] = useState<string | null>(null)
   const [agentState, setAgentState] = useState<AgentState | null>(null)
   const [uiContext, setUiContext] = useState<UIContext>(DEFAULT_UI_CONTEXT)
+  const [pendingFavoriteRequest, setPendingFavoriteRequest] = useState<FavoriteRequest | null>(null)
   const threadIdRef = useRef<string>(generateId())
   const abortRef = useRef<AbortController | null>(null)
   const isRunningRef = useRef(false)
@@ -133,7 +136,7 @@ export function useAGUIChat() {
             continue
           }
 
-          handleEvent(event, assistantId, toolArgsBuffer, updateMessage, setAgentState)
+          handleEvent(event, assistantId, toolArgsBuffer, updateMessage, setAgentState, setPendingFavoriteRequest)
         }
       }
 
@@ -173,6 +176,7 @@ export function useAGUIChat() {
     setError(null)
     setAgentState(null)
     setUiContext(DEFAULT_UI_CONTEXT)
+    setPendingFavoriteRequest(null)
   }, [])
 
   const updateUiContext = useCallback((patch: Partial<UIContext>) => {
@@ -188,6 +192,38 @@ export function useAGUIChat() {
     }))
   }, [updateMessage])
 
+  const submitFavorite = useCallback((
+    favoriteType: 'hotel_preference' | 'flight_preference',
+    selections: Record<string, string | string[]>
+  ) => {
+    const hasSelections = Object.values(selections).some(v =>
+      Array.isArray(v) ? v.length > 0 : Boolean(v)
+    )
+
+    const marker = favoriteType === 'hotel_preference'
+      ? '[호텔 취향 수집 완료]'
+      : '[항공 취향 수집 완료]'
+
+    let message: string
+    if (!hasSelections) {
+      message = `취향 없이 진행합니다 ${marker}`
+    } else {
+      const parts: string[] = []
+      Object.entries(selections).forEach(([_key, value]) => {
+        if (Array.isArray(value) && value.length > 0) {
+          parts.push(value.join('·'))
+        } else if (typeof value === 'string' && value) {
+          parts.push(value)
+        }
+      })
+      const serviceLabel = favoriteType === 'hotel_preference' ? '호텔' : '항공'
+      message = `${serviceLabel} 취향: ${parts.join(', ')} ${marker}`
+    }
+
+    setPendingFavoriteRequest(null)
+    sendMessage(message)
+  }, [sendMessage])
+
   return {
     messages,
     isRunning,
@@ -200,6 +236,8 @@ export function useAGUIChat() {
     stopStreaming,
     clearMessages,
     markFormSubmitted,
+    pendingFavoriteRequest,
+    submitFavorite,
   }
 }
 
@@ -212,6 +250,7 @@ function handleEvent(
   toolArgsBuffer: Record<string, string>,
   updateMessage: (id: string, fn: (m: ChatMessage) => ChatMessage) => void,
   setAgentState: (fn: (prev: AgentState | null) => AgentState) => void,
+  setPendingFavoriteRequest: (value: FavoriteRequest | null) => void,
 ) {
   switch (event.type) {
     case 'TEXT_MESSAGE_CHUNK': {
@@ -329,6 +368,19 @@ function handleEvent(
           submitted: false,
         },
       }))
+      break
+    }
+
+    case 'USER_FAVORITE_REQUEST': {
+      const requestId = event.requestId as string
+      const favoriteType = event.favoriteType as 'hotel_preference' | 'flight_preference'
+      const options = event.options as Record<string, FavoriteOptionDef>
+      setPendingFavoriteRequest({
+        requestId,
+        favoriteType,
+        options,
+        submitted: false,
+      })
       break
     }
   }
