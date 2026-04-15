@@ -83,11 +83,17 @@ class TravelState:
 
 ```python
 class UserFavoriteRequestEvent(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     type: str = "USER_FAVORITE_REQUEST"
-    request_id: str
-    favorite_type: str  # "hotel_preference" | "flight_preference"
-    options: dict       # {field_name: {type, label, choices}}
+    request_id: str = Field(alias="requestId")
+    favorite_type: str = Field(alias="favoriteType")  # "hotel_preference" | "flight_preference"
+    options: dict       # {field_name: {type: "radio"|"checkbox", label, choices: list[str]}}
 ```
+
+- Pydantic `alias`를 통해 snake_case(Python) → camelCase(JSON/Frontend) 변환을 `models.py`에서 일괄 처리한다.
+- `converter.py`는 변환 없이 `UserFavoriteRequestEvent` 인스턴스를 생성하고 `encoder.encode()`에 위임한다.
+- `request_id`는 `converter.py`에서 `str(uuid.uuid4())`로 생성한다 (`USER_INPUT_REQUEST`와 동일한 패턴).
 
 ### `backend/converter.py` 확장
 
@@ -130,16 +136,26 @@ class UserFavoriteRequestEvent(BaseModel):
 
 ```
 취향 수집 우선 규칙:
-- 호텔 추천 요청 시 → state에 hotel_preference 없으면 request_user_favorite("hotel_preference") 먼저 호출
-- 항공편 추천 요청 시 → state에 flight_preference 없으면 request_user_favorite("flight_preference") 먼저 호출
-- 취향이 이미 수집된 경우 → 재수집 없이 바로 request_user_input 또는 search로 진행
+- 호텔 추천 요청 시:
+  → state 메시지에 "[호텔 취향 수집 완료]" 마커가 없으면 request_user_favorite("hotel_preference") 먼저 호출
+  → 마커가 있으면 (취향 내용 불문) 재수집 없이 바로 request_user_input 또는 search로 진행
+- 항공편 추천 요청 시:
+  → state 메시지에 "[항공 취향 수집 완료]" 마커가 없으면 request_user_favorite("flight_preference") 먼저 호출
+  → 마커가 있으면 재수집 없이 다음 단계로 진행
 - 취향 수집 후 → "OO 취향을 바탕으로 검색하겠습니다" 안내 후 다음 단계 진행
 ```
 
+**"수집 완료" 판단 기준:**
+- 사용자가 FavoritePanel에서 "확인" 버튼을 클릭하면 프론트엔드가 아래 형식의 메시지를 sendMessage로 전송:
+  - 선택 있음: "호텔 취향: 5성, 리조트, 수영장·조식포함 [호텔 취향 수집 완료]"
+  - 선택 없음: "취향 없이 진행합니다 [호텔 취향 수집 완료]"
+- 에이전트는 메시지에 마커가 포함되어 있으면 해당 서비스의 취향을 "수집 완료"로 간주한다.
+- 이 방식으로 빈 제출(all-None)과 미수집을 명확히 구분한다.
+
 **플로우:**
 1. 호텔/항공편 추천 요청
-2. `request_user_favorite` 호출 → 슬라이드업 패널 노출
-3. 사용자 취향 확인 (optional, 건너뛰기 가능)
+2. 수집 완료 마커 없음 → `request_user_favorite` 호출 → 슬라이드업 패널 노출
+3. 사용자가 확인 버튼 클릭 (선택 여부 무관) → 마커 포함 메시지 전송 → 패널 닫힘
 4. `request_user_input` 호출 → 날짜/인원 폼 노출 (기존 흐름)
 5. `search_hotels` / `search_flights` 호출
 
@@ -204,8 +220,11 @@ interface AgentState {
 - 애니메이션: `transform: translateY(100%) → translateY(0)`, `transition: 0.3s ease`
 - radio 항목: 버튼 그룹 단일 선택 UI
 - checkbox 항목: 칩(chip) 형태 다중 선택 UI
-- 확인 버튼: 선택 없어도 활성화 (optional)
-- 선택 없이 확인 시: "취향 선택 없이 진행합니다" 메시지 전송
+- 확인 버튼: 선택 없어도 항상 활성화 (optional)
+- 확인 클릭 시 전송 메시지 형식:
+  - 선택 있음: `"호텔 취향: {grade}, {type}, {amenities 목록} [호텔 취향 수집 완료]"`
+  - 선택 없음: `"취향 없이 진행합니다 [호텔 취향 수집 완료]"` (항공은 `[항공 취향 수집 완료]`)
+- 패널에는 별도 닫기/건너뛰기 버튼 없음 — "확인" 버튼이 유일한 탈출구 (선택 없이 눌러도 됨)
 
 ### `frontend/src/App.tsx` 수정
 
