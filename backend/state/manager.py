@@ -115,6 +115,7 @@ class StateManager:
             "search_flights": "searching",
             "get_hotel_detail": "presenting_results",
             "get_travel_tips": "presenting_results",
+            "request_user_favorite": "awaiting_input",
         }
         missing_fields_map = {
             "hotel_booking_details": ("check_in", "check_out", "guests"),
@@ -159,7 +160,18 @@ class StateManager:
         executor.py에서 function_response 수신 시 호출.
         request_user_input 특수 케이스는 user_input_request snapshot으로 발행한다.
         """
-        if tool_name == "request_user_input" and result.get("status") == "user_input_required":
+        if tool_name == "request_user_favorite" and result.get("status") == "user_favorite_required":
+            yield StateSnapshotEvent(
+                type=EventType.STATE_SNAPSHOT,
+                snapshot={
+                    "snapshot_type": "user_favorite_request",
+                    "_agui_event": "USER_FAVORITE_REQUEST",
+                    "request_id": str(uuid.uuid4()),
+                    "favorite_type": result.get("favorite_type", ""),
+                    "options": result.get("options", {}),
+                },
+            )
+        elif tool_name == "request_user_input" and result.get("status") == "user_input_required":
             yield StateSnapshotEvent(
                 type=EventType.STATE_SNAPSHOT,
                 snapshot={

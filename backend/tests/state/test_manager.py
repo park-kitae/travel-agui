@@ -167,3 +167,31 @@ def test_clear_removes_state_and_tool_call_map(manager):
     manager.clear("thread-12")
     assert "thread-12" not in manager._store
     assert "thread-12" not in manager._tool_call_map
+
+
+@pytest.mark.asyncio
+async def test_apply_tool_result_request_user_favorite_yields_favorite_request(manager):
+    result = {
+        "status": "user_favorite_required",
+        "favorite_type": "hotel_preference",
+        "options": {
+            "hotel_grade": {"type": "radio", "label": "호텔 등급", "choices": ["2성", "3성", "4성", "5성"]},
+        },
+    }
+    events = [e async for e in manager.apply_tool_result("thread-20", "request_user_favorite", result)]
+    assert len(events) == 1
+    snap = events[0].snapshot
+    assert snap["snapshot_type"] == "user_favorite_request"
+    assert snap["_agui_event"] == "USER_FAVORITE_REQUEST"
+    assert snap["favorite_type"] == "hotel_preference"
+    assert "hotel_grade" in snap["options"]
+
+
+@pytest.mark.asyncio
+async def test_apply_tool_call_request_user_favorite_sets_awaiting_intent(manager):
+    args = {"favorite_type": "hotel_preference"}
+    events = [e async for e in manager.apply_tool_call("thread-21", "request_user_favorite", args)]
+    assert len(events) == 1
+    snap = events[0].snapshot
+    assert snap["agent_status"]["current_intent"] == "awaiting_input"
+    assert snap["agent_status"]["active_tool"] == "request_user_favorite"
