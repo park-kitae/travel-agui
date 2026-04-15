@@ -42,7 +42,7 @@ ADK Runner → Gemini LLM + FunctionTools
 | 레이어 | 파일 | 역할 |
 |---|---|---|
 | **React Client** | `frontend/src/` | AG-UI SSE 수신 → 실시간 UI 렌더링, travel_context 포함 전송 |
-| **AG-UI Gateway** | `backend/main.py` | RunAgentInput 수신 → travel_context 주입 → A2A 요청 → AG-UI 이벤트 변환 |
+| **AG-UI Gateway** | `backend/main.py` | RunAgentInput 수신 → StateManager.apply_client_state → A2A 요청 → AG-UI 이벤트 변환 |
 | **A2A Server** | `backend/a2a_server.py` | ADK 에이전트를 A2A 프로토콜로 노출, agent_state STATE_SNAPSHOT 발행 |
 | **ADK Agent** | `backend/agent.py` | LlmAgent + FunctionTool 정의, 여행 컨텍스트 재사용 프롬프트 |
 
@@ -60,9 +60,18 @@ travel-agui/
 │   ├── agent.py          # ADK LlmAgent + FunctionTool 정의
 │   ├── a2a_server.py     # A2A 에이전트 서버 (포트 8001)
 │   ├── main.py           # AG-UI 게이트웨이 (포트 8000)
+│   ├── state/            # 여행 상태 통합 관리 (StateManager + Models)
+│   │   ├── __init__.py
+│   │   ├── models.py     # frozen dataclass (TravelState, TravelContext, UIContext, AgentStatus)
+│   │   └── manager.py    # StateManager (thread_id 기준 state 통합 관리)
 │   ├── tests/            # 백엔드 Pytest 테스트 스위트
-│   │   ├── test_a2a_stream.py # A2A 스트리밍 검증
-│   │   └── test_agui_run.py   # AG-UI /agui/run 엔드포인트 검증
+│   │   ├── state/
+│   │   │   ├── test_models.py
+│   │   │   └── test_manager.py
+│   │   └── state-panel-sidebar/
+│   │       ├── test_context_extraction.py
+│   │       ├── test_snapshot_emission.py
+│   │       └── test_main_state_handling.py
 │   ├── pyproject.toml    # uv 프로젝트 설정 및 의존성
 │   └── .env.example      # 환경 변수 템플릿
 ├── frontend/
@@ -319,6 +328,8 @@ for msg in body["messages"]:
 에이전트는 이 컨텍스트를 읽고 날짜·인원을 재사용해 `search_flights` 또는 `request_user_input` 에 자동 반영합니다.
 
 **핵심 상태 보호**: `STATE_SNAPSHOT` 이벤트 수신 시 `destination`, `check_in`, `check_out`, `nights`, `guests`, `origin`, `trip_type` 필드는 null로 덮어쓰지 않습니다. 호텔 상세 조회처럼 부분적인 상태 업데이트가 오더라도 기존 여행 정보가 유지됩니다.
+
+서버 측 state 관리는 `StateManager`가 담당하며, `thread_id` 기준으로 `TravelState`(TravelContext + UIContext + AgentStatus)를 통합 관리합니다.
 
 ---
 

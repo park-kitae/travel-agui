@@ -28,6 +28,8 @@ cd frontend && npx playwright test   # E2E 테스트
 | `backend/agent.py` | LlmAgent 정의, FunctionTool 목록, instruction |
 | `backend/a2a_server.py` | A2A 프로토콜 서버, SSE 이벤트 변환 |
 | `backend/main.py` | AG-UI Gateway, `/agui/run` 엔드포인트 |
+| `backend/state/models.py` | 여행 상태 frozen dataclass 정의 (TravelState, TravelContext, UIContext, AgentStatus) |
+| `backend/state/manager.py` | StateManager — thread_id 기준 state 통합 관리, StateSnapshotEvent yield |
 | `frontend/src/components/ToolResultCard.tsx` | 도구 결과 UI 렌더링 |
 | `frontend/src/components/ChatMessageBubble.tsx` | 채팅 메시지 렌더링 |
 | `frontend/src/hooks/useAGUIChat.ts` | SSE 스트림 처리 |

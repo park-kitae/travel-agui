@@ -9,6 +9,11 @@
 1. [아키텍처 개요](#아키텍처-개요)
 2. [전체 통신 흐름](#전체-통신-흐름)
 3. [레이어별 상세 분석](#레이어별-상세-분석)
+   - Frontend Layer
+   - State Management Layer
+   - AG-UI Gateway Layer
+   - A2A Server Layer
+   - ADK Agent Layer
 4. [이벤트 변환 과정](#이벤트-변환-과정)
 5. [실제 예시](#실제-예시)
 6. [디버깅 가이드](#디버깅-가이드)
@@ -325,9 +330,41 @@ export function ToolResultCard({ result }: { result: any }) {
 
 ---
 
-### 2. AG-UI Gateway Layer (FastAPI)
+### 2. State Management Layer
 
-#### 2.1 요청 수신 및 A2A 호출
+**핵심 역할**: `StateManager`는 싱글톤으로 `main.py`와 `executor.py` 간에 공유되며, `thread_id` 기준으로 `TravelState`(TravelContext + UIContext + AgentStatus)를 통합 관리합니다.
+
+**파일**: `backend/state/manager.py`, `backend/state/models.py`
+
+#### 2.1 StateManager 메서드
+
+- `get(thread_id)` → 현재 `TravelState` 반환
+- `apply_client_state(thread_id, raw_state)` → 클라이언트 상태 적용, `StateSnapshotEvent` yield (메인 레이어에서 SSE로 직접 인코딩)
+- `apply_tool_call(thread_id, tool_name, args)` → 툴 호출 반영, `StateSnapshotEvent` yield (executor에서 `TaskArtifactUpdateEvent(DataPart)` 래핑)
+- `apply_tool_result(thread_id, tool_name, result)` → 툴 결과 반영
+- `get_tc_id(thread_id, tool_name)` → 특정 tool_call의 ID 반환
+- `clear(thread_id)` → 스레드 정리
+
+#### 2.2 SSE 인코딩 흐름
+
+1. **apply_client_state** (main.py에서 호출)
+   - 클라이언트 상태 수신 → `StateSnapshotEvent` yield
+   - Main은 이를 직접 AG-UI `STATE_SNAPSHOT` 이벤트로 인코딩 → SSE 전송
+
+2. **apply_tool_call / apply_tool_result** (executor.py에서 호출)
+   - 도구 호출/결과 발생 → `StateSnapshotEvent` yield
+   - Executor는 이를 `TaskArtifactUpdateEvent(DataPart)` 래핑 → A2AServer에 enqueue
+   - Main의 A2A 변환기가 `DataPart` → `STATE_SNAPSHOT` 이벤트 변환
+
+3. **특수 케이스: request_user_input**
+   - `status == "user_input_required"` → `snapshot_type: "user_input_request"`로 마킹
+   - Main은 `_agui_event: "USER_INPUT_REQUEST"` DataPart로 인코딩 → 프론트에서 폼 렌더링
+
+---
+
+### 3. AG-UI Gateway Layer (FastAPI)
+
+#### 3.1 요청 수신 및 A2A 호출
 
 **파일**: `backend/main.py`
 
@@ -402,7 +439,7 @@ async def handle_run(body: dict):
     )
 ```
 
-#### 2.2 A2A → AG-UI 이벤트 변환
+#### 3.2 A2A → AG-UI 이벤트 변환
 
 ```python
 def transform_a2a_to_agui(a2a_result):
@@ -495,9 +532,9 @@ def transform_a2a_to_agui(a2a_result):
 
 ---
 
-### 3. A2A Server Layer (Starlette)
+### 4. A2A Server Layer (Starlette)
 
-#### 3.1 A2A 서버 초기화
+#### 4.1 A2A 서버 초기화
 
 **파일**: `backend/a2a_server.py`
 
@@ -639,9 +676,9 @@ if __name__ == "__main__":
 
 ---
 
-### 4. ADK Agent Layer (Google ADK)
+### 5. ADK Agent Layer (Google ADK)
 
-#### 4.1 에이전트 정의
+#### 5.1 에이전트 정의
 
 **파일**: `backend/agent.py`
 
