@@ -268,6 +268,16 @@ const handleAGUIEvent = (event: any) => {
       }
       break;
 
+    case 'USER_FAVORITE_REQUEST':
+      // 취향 수집 패널 표시
+      setPendingFavoriteRequest({
+        requestId: event.requestId,
+        favoriteType: event.favoriteType,
+        options: event.options,
+        submitted: false,
+      });
+      break;
+
     case 'RUN_FINISHED':
       console.log('Run finished');
       break;
@@ -780,6 +790,7 @@ def create_travel_agent() -> LlmAgent:
 | `function_call` | `DataPart` | `{_agui_event: "TOOL_CALL_START", id, name, args}` | 툴 호출 시작 신호 |
 | `function_response` (start) | `DataPart` | `{_agui_event: "TOOL_CALL_END", id}` | 툴 호출 종료 신호 |
 | `function_response` (result) | `DataPart` | `{tool: "search_hotels", result: {...}}` | 툴 실행 결과 |
+| `request_user_favorite` | `DataPart` | `{_agui_event: "USER_FAVORITE_REQUEST", requestId, favoriteType, options}` | 취향 수집 요청 |
 
 ### A2A Event → AG-UI Event
 
@@ -790,6 +801,7 @@ def create_travel_agent() -> LlmAgent:
 | `TaskArtifactUpdateEvent(TextPart)` | `TEXT_MESSAGE_START`<br/>`TEXT_MESSAGE_CHUNK`<br/>`TEXT_MESSAGE_END` | 텍스트 스트리밍 |
 | `TaskArtifactUpdateEvent(DataPart)`<br/>with `_agui_event=TOOL_CALL_START` | `TOOL_CALL_START`<br/>`TOOL_CALL_ARGS` | 툴 호출 시작 |
 | `TaskArtifactUpdateEvent(DataPart)`<br/>with `_agui_event=TOOL_CALL_END` | `TOOL_CALL_END` | 툴 호출 종료 |
+| `TaskArtifactUpdateEvent(DataPart)`<br/>with `_agui_event=USER_FAVORITE_REQUEST` | `USER_FAVORITE_REQUEST` | 취향 수집 패널 렌더링 |
 | `TaskArtifactUpdateEvent(DataPart)`<br/>(other) | `STATE_SNAPSHOT` | 툴 결과 또는 상태 |
 
 ---

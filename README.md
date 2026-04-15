@@ -8,6 +8,7 @@ React + Vite 프론트엔드와 Google ADK 에이전트를 **A2A → AG-UI** 이
 - **호텔 상세 조회**: 호텔 카드 클릭 시 객실 정보, 편의시설, 위치 등 상세 정보 표시
 - **항공편 검색**: 출발지, 목적지, 날짜, 인원수로 왕복 항공편 검색
 - **여행 정보**: 목적지별 여행 팁 및 관광 정보 제공
+- **사용자 취향 수집**: 호텔/항공편 추천 전 슬라이드업 패널로 취향 수집 (등급, 편의시설, 좌석 등)
 - **사용자 입력 폼**: 정보가 부족할 때 대화형 폼으로 필요한 정보 수집 (기존 날짜·인원 자동 pre-fill)
 - **여행 컨텍스트 재사용**: 호텔 조회 후 항공편 문의 시(또는 반대) 기존 날짜·인원을 자동으로 폼에 적용
 - **핵심 상태 보호**: 목적지·날짜·인원 등 핵심 여행 정보는 호텔 상세 조회 등 부분 업데이트에 의해 초기화되지 않음
@@ -212,6 +213,7 @@ Gateway → SSE stream:
   data: {"type":"TOOL_CALL_ARGS",  "toolCallId":"...", "delta":"{\"city\":\"도쿄\",...}"}
   data: {"type":"TOOL_CALL_END",   "toolCallId":"..."}
   data: {"type":"STATE_SNAPSHOT",  "snapshot":{"tool":"search_hotels","result":{...}}}
+  data: {"type":"USER_FAVORITE_REQUEST", "requestId":"...", "favoriteType":"hotel_preference", "options":{...}}
   data: {"type":"USER_INPUT_REQUEST", "requestId":"...", "inputType":"hotel_booking_details", "fields":[...]}
   data: {"type":"TEXT_MESSAGE_END", "messageId":"..."}
   data: {"type":"STEP_FINISHED", ...}
@@ -229,6 +231,7 @@ ADK 이벤트를 A2A `TaskArtifactUpdateEvent` 의 파트로 인코딩해 전달
 | `function_response` (종료 신호) | `DataPart` | `{ "_agui_event": "TOOL_CALL_END", "id": "..." }` |
 | `function_response` (결과) | `DataPart` | `{ "tool": "search_hotels", "result": {...} }` |
 | `request_user_input` | `DataPart` | `{ "_agui_event": "USER_INPUT_REQUEST", "requestId": "...", "inputType": "...", "fields": [...] }` |
+| `request_user_favorite` | `DataPart` | `{ "_agui_event": "USER_FAVORITE_REQUEST", "requestId": "...", "favoriteType": "...", "options": {...} }` |
 | `function_call` (agent_state) | `DataPart` | `{ "snapshot_type": "agent_state", "travel_context": {...}, "agent_status": {...} }` |
 
 #### main.py 변환 규칙
@@ -237,6 +240,7 @@ ADK 이벤트를 A2A `TaskArtifactUpdateEvent` 의 파트로 인코딩해 전달
 TextPart          → TEXT_MESSAGE_START / CHUNK / END
 DataPart._agui_event == "TOOL_CALL_START"      → TOOL_CALL_START + TOOL_CALL_ARGS
 DataPart._agui_event == "TOOL_CALL_END"        → TOOL_CALL_END
+DataPart._agui_event == "USER_FAVORITE_REQUEST" → USER_FAVORITE_REQUEST (취향 패널 렌더링)
 DataPart._agui_event == "USER_INPUT_REQUEST"   → USER_INPUT_REQUEST (폼 렌더링)
 DataPart (나머지)  → STATE_SNAPSHOT  (프론트 ToolResultCard 렌더링)
 TaskStatusUpdateEvent (working)    → STEP_STARTED
