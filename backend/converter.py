@@ -16,7 +16,7 @@ from ag_ui.core.events import (
 )
 from ag_ui.encoder.encoder import EventEncoder
 
-from models import UserInputRequestEvent
+from models import UserInputRequestEvent, UserFavoriteRequestEvent
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +108,18 @@ async def a2a_to_agui_stream(
                             ))
                         except Exception as e:
                             logger.warning(f"UserInputRequest 직렬화 실패: {e}")
+
+                    elif agui_event == "USER_FAVORITE_REQUEST":
+                        # 사용자 취향 요청 이벤트
+                        try:
+                            event_data = UserFavoriteRequestEvent(
+                                request_id=data.get("request_id", str(uuid.uuid4())),
+                                favorite_type=data.get("favorite_type", ""),
+                                options=data.get("options", {}),
+                            )
+                            yield encoder.encode(event_data)
+                        except Exception as e:
+                            logger.warning(f"UserFavoriteRequest 직렬화 실패: {e}")
 
                     else:
                         # tool result → STATE_SNAPSHOT
