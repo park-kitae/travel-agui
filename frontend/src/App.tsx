@@ -112,7 +112,7 @@ export default function App() {
   }
 
   const handleFavoriteSubmit = (selections: Record<string, string | string[]>) => {
-    if (!pendingFavoriteRequest || isRunning) return
+    if (!pendingFavoriteRequest) return
     submitFavorite(pendingFavoriteRequest, selections)
   }
 
@@ -186,7 +186,7 @@ export default function App() {
         <FavoritePanel
           request={pendingFavoriteRequest}
           onSubmit={handleFavoriteSubmit}
-          disabled={isRunning}
+          disabled={false}
         />
       )}
 

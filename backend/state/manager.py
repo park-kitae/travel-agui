@@ -9,7 +9,7 @@ from dataclasses import replace, asdict
 
 from ag_ui.core.events import StateSnapshotEvent, EventType
 
-from .models import TravelState, TravelContext, UIContext, AgentStatus
+from .models import TravelState, TravelContext, UIContext, AgentStatus, UserPreferences
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,14 @@ class StateManager:
             if hasattr(current.ui_context, k)
         }) if raw_ui else current.ui_context
 
-        updated = replace(current, travel_context=new_tc, ui_context=new_ui)
+        raw_pref = raw_state.get("user_preferences") or {}
+        new_pref = replace(current.user_preferences, **{
+            k: tuple(v) if isinstance(v, list) else v
+            for k, v in raw_pref.items()
+            if hasattr(current.user_preferences, k) and v
+        }) if raw_pref else current.user_preferences
+
+        updated = replace(current, travel_context=new_tc, ui_context=new_ui, user_preferences=new_pref)
         self._store[thread_id] = updated
 
         yield StateSnapshotEvent(
@@ -59,6 +66,7 @@ class StateManager:
                 "snapshot_type": "client_state",
                 "travel_context": asdict(updated.travel_context),
                 "ui_context": asdict(updated.ui_context),
+                "user_preferences": asdict(updated.user_preferences),
             },
         )
 
@@ -150,6 +158,7 @@ class StateManager:
                     "missing_fields": list(new_status.missing_fields),
                     "active_tool": new_status.active_tool,
                 },
+                "user_preferences": asdict(updated.user_preferences),
             },
         )
 
