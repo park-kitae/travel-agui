@@ -835,6 +835,16 @@
   color: var(--gold);
   border: 1px solid rgba(201,168,76,0.35);
 }
+.sp-badge-done {
+  background: rgba(80,200,120,0.18);
+  color: #50c878;
+  border: 1px solid rgba(80,200,120,0.35);
+}
+.sp-badge-pending {
+  background: rgba(160,160,160,0.15);
+  color: #888;
+  border: 1px solid rgba(160,160,160,0.25);
+}
 
 .sp-fields { display: flex; flex-direction: column; gap: 3px; }
 

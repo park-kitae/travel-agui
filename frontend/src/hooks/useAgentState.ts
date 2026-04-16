@@ -15,7 +15,8 @@ const DEFAULT_UI_CONTEXT: UIContext = {
 
 // 새 필드 추가 시 여기만 수정 — null로 덮어쓰지 않을 핵심 여행 정보
 const PERSISTENT_FIELDS: ReadonlyArray<keyof TravelContext> = [
-  'destination', 'check_in', 'check_out', 'nights', 'guests', 'origin', 'trip_type',
+  'destination', 'check_in', 'check_out', 'nights', 'guests', 'rooms',
+  'origin', 'trip_type', 'budget_range', 'travel_purpose',
 ]
 
 export function useAgentState() {

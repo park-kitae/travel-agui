@@ -13,13 +13,17 @@ class TravelContext:
     check_out: str | None = None
     nights: int | None = None
     guests: int | None = None
-    trip_type: str | None = None  # "round_trip" | "one_way"
+    rooms: int | None = None          # 객실 수 (인원수와 별개)
+    trip_type: str | None = None      # "round_trip" | "one_way"
+    budget_range: str | None = None   # "저예산" | "중간" | "고급"
+    travel_purpose: str | None = None # "leisure" | "business" | "honeymoon" | "family"
 
 
 @dataclass(frozen=True)
 class UIContext:
-    """UI에서 선택된 값 (호텔 코드 등)."""
+    """UI에서 선택된 값 (호텔 코드, 항공편 ID 등)."""
     selected_hotel_code: str | None = None
+    selected_flight_id: str | None = None
 
 
 @dataclass(frozen=True)

@@ -116,9 +116,13 @@ async def run_agent(request: Request):
         state = state_manager.get(thread_id)
         tc = state.travel_context
         ui = state.ui_context
+        pref = state.user_preferences
+
         ctx_lines = []
         if ui.selected_hotel_code:
             ctx_lines.append(f"- 선택된 호텔 코드: {ui.selected_hotel_code}")
+        if ui.selected_flight_id:
+            ctx_lines.append(f"- 선택된 항공편 ID: {ui.selected_flight_id}")
         if tc.destination:
             ctx_lines.append(f"- 목적지: {tc.destination}")
         if tc.origin:
@@ -131,12 +135,57 @@ async def run_agent(request: Request):
             ctx_lines.append(f"- 숙박: {tc.nights}박")
         if tc.guests:
             ctx_lines.append(f"- 인원: {tc.guests}명")
+        if tc.rooms:
+            ctx_lines.append(f"- 객실 수: {tc.rooms}실")
         if tc.trip_type:
             ctx_lines.append(f"- 여행 유형: {tc.trip_type}")
-        if ctx_lines:
-            context_block = "[현재 여행 컨텍스트 - 이미 확인된 정보]\n" + "\n".join(ctx_lines)
+        if tc.budget_range:
+            ctx_lines.append(f"- 예산 수준: {tc.budget_range}")
+        if tc.travel_purpose:
+            purpose_label = {
+                "leisure": "여가/관광",
+                "business": "비즈니스",
+                "honeymoon": "허니문",
+                "family": "가족 여행",
+            }.get(tc.travel_purpose, tc.travel_purpose)
+            ctx_lines.append(f"- 여행 목적: {purpose_label}")
+
+        # 취향 수집 완료 마커 — 채팅 히스토리 대신 state에서 직접 판단
+        pref_lines = []
+        hotel_pref_collected = any([pref.hotel_grade, pref.hotel_type, pref.amenities])
+        flight_pref_collected = any([pref.seat_class, pref.seat_position, pref.meal_preference, pref.airline_preference])
+
+        if hotel_pref_collected:
+            hotel_pref_parts = []
+            if pref.hotel_grade:
+                hotel_pref_parts.append(f"등급: {pref.hotel_grade}")
+            if pref.hotel_type:
+                hotel_pref_parts.append(f"유형: {pref.hotel_type}")
+            if pref.amenities:
+                hotel_pref_parts.append(f"편의시설: {', '.join(pref.amenities)}")
+            pref_lines.append(f"- 호텔 취향: {' / '.join(hotel_pref_parts)} [호텔 취향 수집 완료]")
+
+        if flight_pref_collected:
+            flight_pref_parts = []
+            if pref.seat_class:
+                flight_pref_parts.append(f"좌석 등급: {pref.seat_class}")
+            if pref.seat_position:
+                flight_pref_parts.append(f"좌석 위치: {pref.seat_position}")
+            if pref.meal_preference:
+                flight_pref_parts.append(f"기내식: {pref.meal_preference}")
+            if pref.airline_preference:
+                flight_pref_parts.append(f"선호 항공사: {', '.join(pref.airline_preference)}")
+            pref_lines.append(f"- 항공 취향: {' / '.join(flight_pref_parts)} [항공 취향 수집 완료]")
+
+        if ctx_lines or pref_lines:
+            sections = []
+            if ctx_lines:
+                sections.append("[현재 여행 컨텍스트 - 이미 확인된 정보]\n" + "\n".join(ctx_lines))
+            if pref_lines:
+                sections.append("[사용자 취향 - 이미 수집 완료]\n" + "\n".join(pref_lines))
+            context_block = "\n\n".join(sections)
             user_message = f"{context_block}\n\n사용자 요청: {user_message}"
-            logger.info(f"[{thread_id}] 여행 컨텍스트 주입: {ctx_lines}")
+            logger.info(f"[{thread_id}] 컨텍스트 주입: travel={ctx_lines}, prefs={pref_lines}")
 
         try:
             async with httpx.AsyncClient(timeout=120.0) as http_client:
