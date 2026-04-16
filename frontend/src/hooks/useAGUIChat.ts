@@ -7,6 +7,7 @@ import {
   AgentStateSnapshot,
   FavoriteRequest,
   ClientState,
+  UserPreferences,
   DEFAULT_SESSION_PREFS,
   isAgentStateSnapshot,
   isUserInputRequestEvent,
@@ -34,13 +35,14 @@ export function useAGUIChat() {
     pendingFavoriteRequest,
     applyAgentStateSnapshot,
     updateUiContext,
+    updateUserPreferences,
     setPendingFavoriteRequest,
     resetAgentState,
   } = useAgentState()
 
   const { messages, addMessage, updateMessage, clearMessages } = useChatMessages()
 
-  const sendMessage = useCallback(async (userText: string) => {
+  const sendMessage = useCallback(async (userText: string, extraPrefs?: Partial<UserPreferences>) => {
     if (isRunningRef.current || !userText.trim()) return
     setError(null)
     setIsRunning(true)
@@ -75,10 +77,15 @@ export function useAGUIChat() {
     history.push({ role: 'user', content: userText.trim() })
 
     const runId = generateId()
+    // extraPrefs: submitFavorite에서 직접 전달 (React state 비동기 타이밍 우회)
+    const mergedPrefs: UserPreferences = extraPrefs
+      ? { ...agentState?.user_preferences, ...extraPrefs }
+      : agentState?.user_preferences ?? {}
     const clientState: ClientState = {
       ui_context: uiContext,
       session_prefs: DEFAULT_SESSION_PREFS,
       travel_context: agentState?.travel_context ?? null,
+      user_preferences: mergedPrefs,
     }
     const input: RunAgentInput = {
       threadId: threadIdRef.current,
@@ -188,9 +195,18 @@ export function useAGUIChat() {
     favoriteRequest: FavoriteRequest,
     selections: Record<string, string | string[]>
   ) => {
-    const hasSelections = Object.values(selections).some(v =>
-      Array.isArray(v) ? v.length > 0 : Boolean(v)
-    )
+    // if 블록 밖에 선언해야 아래에서 참조 가능
+    const prefPatch: Partial<UserPreferences> = {}
+    Object.entries(selections).forEach(([key, value]) => {
+      if (Array.isArray(value) ? value.length > 0 : Boolean(value)) {
+        (prefPatch as Record<string, unknown>)[key] = value
+      }
+    })
+    const hasSelections = Object.keys(prefPatch).length > 0
+
+    if (hasSelections) {
+      updateUserPreferences(prefPatch)
+    }
 
     const marker = favoriteRequest.favoriteType === 'hotel_preference'
       ? '[호텔 취향 수집 완료]'
@@ -200,21 +216,26 @@ export function useAGUIChat() {
     if (!hasSelections) {
       message = `취향 없이 진행합니다 ${marker}`
     } else {
-      const parts: string[] = []
-      Object.entries(selections).forEach(([_key, value]) => {
-        if (Array.isArray(value) && value.length > 0) {
-          parts.push(value.join('·'))
-        } else if (typeof value === 'string' && value) {
-          parts.push(value)
-        }
-      })
+      const parts = Object.values(selections).flatMap(v =>
+        Array.isArray(v) && v.length > 0 ? [v.join('·')] : typeof v === 'string' && v ? [v] : []
+      )
       const serviceLabel = favoriteRequest.favoriteType === 'hotel_preference' ? '호텔' : '항공'
       message = `${serviceLabel} 취향: ${parts.join(', ')} ${marker}`
     }
 
     setPendingFavoriteRequest(null)
-    sendMessage(message)
-  }, [sendMessage, setPendingFavoriteRequest])
+
+    // 스트리밍 중이면 먼저 인터럽트 후 전송 (취향 패널은 isRunning과 무관하게 제출 가능)
+    if (isRunningRef.current) {
+      abortRef.current?.abort()
+      abortRef.current = null
+      setIsRunning(false)
+      isRunningRef.current = false
+      setTimeout(() => sendMessage(message, hasSelections ? prefPatch : undefined), 0)
+    } else {
+      sendMessage(message, hasSelections ? prefPatch : undefined)
+    }
+  }, [sendMessage, setPendingFavoriteRequest, updateUserPreferences])
 
   return {
     messages,

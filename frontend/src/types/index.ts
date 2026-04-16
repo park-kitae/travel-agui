@@ -178,6 +178,7 @@ export interface ClientState {
   ui_context: UIContext
   session_prefs: SessionPrefs
   travel_context?: Partial<TravelContext> | null  // 누적된 여행 컨텍스트 (호텔↔항공 날짜 재사용)
+  user_preferences?: UserPreferences | null       // 세션 내 수집된 취향 (백엔드 state에 반영)
 }
 
 // 도구 결과 스냅샷
@@ -191,6 +192,7 @@ export interface AgentStateSnapshot {
   snapshot_type: 'agent_state'
   travel_context: TravelContext
   agent_status: AgentStatus
+  user_preferences?: UserPreferences
 }
 
 // 하위 호환: snapshot_type 없는 기존 구조 포함

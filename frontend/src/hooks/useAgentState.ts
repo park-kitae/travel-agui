@@ -5,6 +5,7 @@ import {
   FavoriteRequest,
   TravelContext,
   AgentStateSnapshot,
+  UserPreferences,
 } from '../types'
 
 const DEFAULT_UI_CONTEXT: UIContext = {
@@ -39,17 +40,38 @@ export function useAgentState() {
         merged[key] = value
       }
 
+      // user_preferences: 스냅샷에 있으면 병합, 없으면 기존 값 유지
+      const mergedPrefs: UserPreferences = s.user_preferences
+        ? { ...prev?.user_preferences, ...s.user_preferences }
+        : prev?.user_preferences ?? {}
+
       return {
         travel_context: merged as unknown as TravelContext,
         agent_status: s.agent_status,
         last_updated: Date.now(),
-        user_preferences: prev?.user_preferences ?? {},
+        user_preferences: mergedPrefs,
       }
     })
   }, [])
 
   const updateUiContext = useCallback((patch: Partial<UIContext>) => {
     setUiContext(prev => ({ ...prev, ...patch }))
+  }, [])
+
+  const updateUserPreferences = useCallback((patch: Partial<UserPreferences>) => {
+    setAgentState(prev => {
+      const base = prev ?? {
+        travel_context: {} as TravelContext,
+        agent_status: { current_intent: 'idle' as const, missing_fields: [], active_tool: null },
+        last_updated: Date.now(),
+        user_preferences: {},
+      }
+      return {
+        ...base,
+        user_preferences: { ...base.user_preferences, ...patch },
+        last_updated: Date.now(),
+      }
+    })
   }, [])
 
   const resetAgentState = useCallback(() => {
@@ -64,6 +86,7 @@ export function useAgentState() {
     pendingFavoriteRequest,
     applyAgentStateSnapshot,
     updateUiContext,
+    updateUserPreferences,
     setPendingFavoriteRequest,
     resetAgentState,
   }
