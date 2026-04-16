@@ -107,10 +107,10 @@ async def run_agent(request: Request):
             thread_id=thread_id,
         ))
 
-        # 2. 클라이언트 state 반영
+        # 2. 클라이언트 state 반영 (서버 내부 저장 전용 — 스트림으로 재방출하지 않음)
         raw_state = body.get("state") or {}
-        async for snap_event in state_manager.apply_client_state(thread_id, raw_state):
-            yield encoder.encode(snap_event)
+        async for _ in state_manager.apply_client_state(thread_id, raw_state):
+            pass
 
         # 3. 컨텍스트 주입 (최신 state 조회)
         state = state_manager.get(thread_id)
@@ -209,6 +209,7 @@ async def run_agent(request: Request):
                     id=str(uuid.uuid4()),
                     params=MessageSendParams(
                         message=Message(**msg_kwargs),
+                        metadata={"client_state": raw_state} if raw_state else None,
                     ),
                 )
 

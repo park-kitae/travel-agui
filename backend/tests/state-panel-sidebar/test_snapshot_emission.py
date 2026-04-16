@@ -5,6 +5,7 @@ agent_state snapshot을 TOOL_CALL_START 전에 발행하는지 검증
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from executor import ADKAgentExecutor
+from state.manager import StateManager
 
 
 def _make_function_call_event(tool_name: str, args: dict):
@@ -157,3 +158,49 @@ async def test_tool_result_snapshot_enqueued_after_tool_call_end():
     assert "TOOL_CALL_END" in keys
     assert "tool_result" in keys
     assert keys.index("TOOL_CALL_END") < keys.index("tool_result")
+
+
+@pytest.mark.asyncio
+async def test_agent_state_snapshot_preserves_user_preferences_from_client_metadata():
+    """executor는 A2A metadata의 client_state를 반영한 뒤 agent_state snapshot을 발행해야 한다."""
+    mock_runner = MagicMock()
+    mock_runner.run_async.return_value = _async_gen(
+        _make_function_call_event("request_user_input", {"input_type": "hotel_booking_details", "context": "도쿄"})
+    )
+    mock_session_service = AsyncMock()
+    mock_session_service.get_session.return_value = MagicMock()
+
+    state_manager = StateManager()
+
+    with patch("executor.state_manager", state_manager):
+        executor = ADKAgentExecutor(mock_runner, mock_session_service)
+        mock_queue = AsyncMock()
+        mock_ctx = MagicMock()
+        mock_ctx.task_id = "t3"
+        mock_ctx.context_id = "thread-pref"
+        mock_ctx.get_user_input.return_value = "도쿄 호텔 추천해줘"
+        mock_ctx.metadata = {
+            "client_state": {
+                "user_preferences": {
+                    "hotel_grade": "4성",
+                    "hotel_type": "비즈니스",
+                    "amenities": ["수영장"],
+                }
+            }
+        }
+
+        await executor.execute(mock_ctx, mock_queue)
+
+    data_list = []
+    for call in mock_queue.enqueue_event.call_args_list:
+        event = call[0][0]
+        if hasattr(event, "artifact") and event.artifact and event.artifact.parts:
+            for p in event.artifact.parts:
+                root = p.root if hasattr(p, "root") else p
+                if hasattr(root, "data") and isinstance(root.data, dict):
+                    data_list.append(root.data)
+
+    agent_snapshot = next(d for d in data_list if d.get("snapshot_type") == "agent_state")
+    assert agent_snapshot["user_preferences"]["hotel_grade"] == "4성"
+    assert agent_snapshot["user_preferences"]["hotel_type"] == "비즈니스"
+    assert agent_snapshot["user_preferences"]["amenities"] == ("수영장",)
