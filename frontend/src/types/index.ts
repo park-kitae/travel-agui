@@ -144,7 +144,10 @@ export interface TravelContext {
   check_out: string | null
   nights: number | null
   guests: number | null
+  rooms: number | null
   trip_type: 'round_trip' | 'one_way' | null
+  budget_range: '저예산' | '중간' | '고급' | null
+  travel_purpose: 'leisure' | 'business' | 'honeymoon' | 'family' | null
 }
 
 export interface AgentStatus {

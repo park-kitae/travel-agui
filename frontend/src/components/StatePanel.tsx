@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AgentState, UIContext } from '../types'
+import { AgentState, UIContext, UserPreferences } from '../types'
 
 interface StatePanelProps {
   agentState: AgentState | null
@@ -58,9 +58,17 @@ function ArrowHeader({ direction, label, pulsing }: ArrowHeaderProps) {
   )
 }
 
+const TRAVEL_PURPOSE_LABEL: Record<string, string> = {
+  leisure: '여가/관광',
+  business: '비즈니스',
+  honeymoon: '허니문',
+  family: '가족 여행',
+}
+
 export function StatePanel({ agentState, uiContext, isOpen, onToggle }: StatePanelProps) {
   const tc = agentState?.travel_context
   const as = agentState?.agent_status
+  const pref: UserPreferences | undefined = agentState?.user_preferences
 
   // 서버→클라이언트 업데이트 pulse 감지
   const serverPulseRef = useRef(0)
@@ -115,7 +123,14 @@ export function StatePanel({ agentState, uiContext, isOpen, onToggle }: StatePan
             <FieldRow label="체크아웃" value={tc?.check_out} highlightClass="sp-highlight-server" />
             <FieldRow label="숙박 (박)" value={tc?.nights} highlightClass="sp-highlight-server" />
             <FieldRow label="인원 (명)" value={tc?.guests} highlightClass="sp-highlight-server" />
+            <FieldRow label="객실 수" value={tc?.rooms} highlightClass="sp-highlight-server" />
             <FieldRow label="여행 유형" value={tc?.trip_type} highlightClass="sp-highlight-server" />
+            <FieldRow label="예산 수준" value={tc?.budget_range} highlightClass="sp-highlight-server" />
+            <FieldRow
+              label="여행 목적"
+              value={tc?.travel_purpose ? (TRAVEL_PURPOSE_LABEL[tc.travel_purpose] ?? tc.travel_purpose) : null}
+              highlightClass="sp-highlight-server"
+            />
           </div>
         </section>
 
@@ -156,6 +171,39 @@ export function StatePanel({ agentState, uiContext, isOpen, onToggle }: StatePan
             <FieldRow
               label="미입력 항목"
               value={as?.missing_fields?.length ? as.missing_fields.join(', ') : null}
+              highlightClass="sp-highlight-server"
+            />
+          </div>
+        </section>
+
+        <div className="sp-divider" />
+
+        {/* ── 4. 사용자 취향 (세션 내 1회 수집) ── */}
+        <section className="sp-section">
+          <div className="sp-section-header">
+            <span className="sp-pin-icon">✨</span>
+            <span className="sp-section-label">사용자 취향</span>
+            <span className={`sp-badge ${(pref?.hotel_grade || pref?.hotel_type) ? 'sp-badge-done' : 'sp-badge-pending'}`}>
+              호텔 {(pref?.hotel_grade || pref?.hotel_type) ? '✓' : '미수집'}
+            </span>
+            <span className={`sp-badge ${(pref?.seat_class || pref?.seat_position) ? 'sp-badge-done' : 'sp-badge-pending'}`}>
+              항공 {(pref?.seat_class || pref?.seat_position) ? '✓' : '미수집'}
+            </span>
+          </div>
+          <div className="sp-fields">
+            <FieldRow label="호텔 등급" value={pref?.hotel_grade} highlightClass="sp-highlight-server" />
+            <FieldRow label="호텔 유형" value={pref?.hotel_type} highlightClass="sp-highlight-server" />
+            <FieldRow
+              label="편의시설"
+              value={pref?.amenities?.length ? pref.amenities.join(', ') : null}
+              highlightClass="sp-highlight-server"
+            />
+            <FieldRow label="좌석 등급" value={pref?.seat_class} highlightClass="sp-highlight-server" />
+            <FieldRow label="좌석 위치" value={pref?.seat_position} highlightClass="sp-highlight-server" />
+            <FieldRow label="기내식" value={pref?.meal_preference} highlightClass="sp-highlight-server" />
+            <FieldRow
+              label="선호 항공사"
+              value={pref?.airline_preference?.length ? pref.airline_preference.join(', ') : null}
               highlightClass="sp-highlight-server"
             />
           </div>
