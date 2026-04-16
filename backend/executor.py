@@ -33,6 +33,7 @@ class ADKAgentExecutor(AgentExecutor):
         task_id = context.task_id or str(uuid.uuid4())
         context_id = context.context_id or str(uuid.uuid4())
         user_input = context.get_user_input()
+        client_state = getattr(context, "metadata", {}).get("client_state", {})
 
         logger.info(f"[{task_id}] ADK 실행 시작: {user_input[:80]}")
 
@@ -58,6 +59,10 @@ class ADKAgentExecutor(AgentExecutor):
                 user_id=USER_ID,
                 session_id=context_id,
             )
+
+        # 게이트웨이에서 전달한 client_state를 A2A 서버 프로세스의 state store에 동기화한다.
+        async for _ in state_manager.apply_client_state(context_id, client_state):
+            pass
 
         # ── ADK 실행 & 이벤트 변환 ─────────────────
         artifact_id = str(uuid.uuid4())
