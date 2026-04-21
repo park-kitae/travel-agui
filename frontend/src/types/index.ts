@@ -11,6 +11,7 @@ export type AGUIEventType =
   | 'TOOL_CALL_START'
   | 'TOOL_CALL_ARGS'
   | 'TOOL_CALL_END'
+  | 'STATE_DELTA'
   | 'STATE_SNAPSHOT'
   | 'USER_INPUT_REQUEST'
   | 'USER_FAVORITE_REQUEST'
@@ -69,6 +70,17 @@ export interface StepStartedEvent extends AGUIEvent {
 export interface StateSnapshotEvent extends AGUIEvent {
   type: 'STATE_SNAPSHOT'
   snapshot: ToolSnapshot
+}
+
+export interface JsonPatchOperation {
+  op: 'add' | 'remove' | 'replace'
+  path: string
+  value?: unknown
+}
+
+export interface StateDeltaEvent extends AGUIEvent {
+  type: 'STATE_DELTA'
+  delta: JsonPatchOperation[]
 }
 
 export interface RunErrorEvent extends AGUIEvent {
@@ -366,6 +378,10 @@ export function isUserInputRequestEvent(e: AGUIEvent): e is UserInputRequestEven
 
 export function isUserFavoriteRequestEvent(e: AGUIEvent): e is UserFavoriteRequestEvent {
   return e.type === 'USER_FAVORITE_REQUEST'
+}
+
+export function isStateDeltaEvent(e: AGUIEvent): e is StateDeltaEvent {
+  return e.type === 'STATE_DELTA' && Array.isArray((e as StateDeltaEvent).delta)
 }
 
 export function isAgentStateSnapshot(s: ToolSnapshot): s is AgentStateSnapshot {

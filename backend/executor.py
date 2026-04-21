@@ -13,6 +13,7 @@ from a2a.types import (
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types as adk_types
+from ag_ui.core.events import StateDeltaEvent, StateSnapshotEvent
 
 from state import state_manager
 
@@ -20,6 +21,15 @@ logger = logging.getLogger(__name__)
 
 APP_NAME = "travel"
 USER_ID = "web_user"
+
+
+def _state_event_to_data(event: StateSnapshotEvent | StateDeltaEvent) -> dict:
+    if isinstance(event, StateDeltaEvent):
+        return {
+            "_agui_event": "STATE_DELTA",
+            "delta": event.delta,
+        }
+    return event.snapshot
 
 
 class ADKAgentExecutor(AgentExecutor):
@@ -111,7 +121,7 @@ class ADKAgentExecutor(AgentExecutor):
                                     context_id=context_id,
                                     artifact=Artifact(
                                         artifact_id=str(uuid.uuid4()),
-                                        parts=[Part(root=DataPart(data=snap_event.snapshot))],
+                                        parts=[Part(root=DataPart(data=_state_event_to_data(snap_event)))],
                                     ),
                                     append=False,
                                     last_chunk=False,
@@ -169,7 +179,7 @@ class ADKAgentExecutor(AgentExecutor):
                                         context_id=context_id,
                                         artifact=Artifact(
                                             artifact_id=str(uuid.uuid4()),
-                                            parts=[Part(root=DataPart(data=snap_event.snapshot))],
+                                            parts=[Part(root=DataPart(data=_state_event_to_data(snap_event)))],
                                         ),
                                         append=False,
                                         last_chunk=False,

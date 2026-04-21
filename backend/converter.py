@@ -12,7 +12,7 @@ from ag_ui.core.events import (
     TextMessageStartEvent, TextMessageChunkEvent, TextMessageEndEvent,
     ToolCallStartEvent, ToolCallArgsEvent, ToolCallEndEvent,
     StepStartedEvent, StepFinishedEvent,
-    StateSnapshotEvent,
+    StateSnapshotEvent, StateDeltaEvent,
 )
 from ag_ui.encoder.encoder import EventEncoder
 
@@ -120,6 +120,15 @@ async def a2a_to_agui_stream(
                             yield encoder.encode(event_data)
                         except Exception as e:
                             logger.warning(f"UserFavoriteRequest 직렬화 실패: {e}")
+
+                    elif agui_event == "STATE_DELTA":
+                        try:
+                            yield encoder.encode(StateDeltaEvent(
+                                type=EventType.STATE_DELTA,
+                                delta=data.get("delta", []),
+                            ))
+                        except Exception as e:
+                            logger.warning(f"StateDelta 직렬화 실패: {e}")
 
                     else:
                         # tool result → STATE_SNAPSHOT

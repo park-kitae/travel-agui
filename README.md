@@ -12,6 +12,7 @@ React + Vite 프론트엔드와 Google ADK 에이전트를 **A2A → AG-UI** 이
 - **사용자 입력 폼**: 정보가 부족할 때 대화형 폼으로 필요한 정보 수집 (기존 날짜·인원 자동 pre-fill)
 - **여행 컨텍스트 재사용**: 호텔 조회 후 항공편 문의 시(또는 반대) 기존 날짜·인원을 자동으로 폼에 적용
 - **핵심 상태 보호**: 목적지·날짜·인원 등 핵심 여행 정보는 호텔 상세 조회 등 부분 업데이트에 의해 초기화되지 않음
+- **증분 상태 동기화**: tool call로 바뀌는 에이전트 상태는 `STATE_DELTA`(RFC 6902 JSON Patch)로 전달되고, 도구 결과/입력 요청은 `STATE_SNAPSHOT` 또는 커스텀 이벤트로 유지
 - **실시간 스트리밍**: SSE를 통한 에이전트 응답 실시간 렌더링
 - **툴 실행 표시**: 호텔/항공편 검색 진행 상태 실시간 표시
 - **스트림 인터럽트**: 응답 중에도 호텔 클릭 시 현재 스트림을 중단하고 즉시 새 요청 전송
@@ -42,9 +43,9 @@ ADK Runner → Gemini LLM + FunctionTools
 
 | 레이어 | 파일 | 역할 |
 |---|---|---|
-| **React Client** | `frontend/src/` | AG-UI SSE 수신 → 실시간 UI 렌더링, travel_context 포함 전송 |
-| **AG-UI Gateway** | `backend/main.py` | RunAgentInput 수신 → StateManager.apply_client_state → A2A 요청 → AG-UI 이벤트 변환 |
-| **A2A Server** | `backend/a2a_server.py` | ADK 에이전트를 A2A 프로토콜로 노출, agent_state STATE_SNAPSHOT 발행 |
+| **React Client** | `frontend/src/` | AG-UI SSE 수신 → `STATE_DELTA` / `STATE_SNAPSHOT` 적용 → 실시간 UI 렌더링, 누적 `travel_context` / `user_preferences` 전송 |
+| **AG-UI Gateway** | `backend/main.py`, `backend/converter.py` | RunAgentInput 수신 → client_state 내부 동기화 → A2A 요청 → `STATE_DELTA` / `STATE_SNAPSHOT` / 커스텀 이벤트 변환 |
+| **A2A Server** | `backend/a2a_server.py`, `backend/executor.py` | ADK 에이전트를 A2A 프로토콜로 노출, tool-call 상태를 `STATE_DELTA` DataPart로 래핑 |
 | **ADK Agent** | `backend/agent.py` | LlmAgent + FunctionTool 정의, 여행 컨텍스트 재사용 프롬프트 |
 
 ---
@@ -60,11 +61,12 @@ travel-agui/
 ├── backend/
 │   ├── agent.py          # ADK LlmAgent + FunctionTool 정의
 │   ├── a2a_server.py     # A2A 에이전트 서버 (포트 8001)
+│   ├── tools/            # 호텔/항공편/입력/취향/팁 FunctionTool 구현
 │   ├── main.py           # AG-UI 게이트웨이 (포트 8000)
 │   ├── state/            # 여행 상태 통합 관리 (StateManager + Models)
 │   │   ├── __init__.py
-│   │   ├── models.py     # frozen dataclass (TravelState, TravelContext, UIContext, AgentStatus)
-│   │   └── manager.py    # StateManager (thread_id 기준 state 통합 관리)
+│   │   ├── models.py     # frozen dataclass (TravelState, TravelContext, UIContext, AgentStatus, UserPreferences)
+│   │   └── manager.py    # StateManager (thread_id 기준 state 통합 관리, STATE_DELTA / STATE_SNAPSHOT 생성)
 │   ├── tests/            # 백엔드 Pytest 테스트 스위트
 │   │   ├── state/
 │   │   │   ├── test_models.py
@@ -76,7 +78,7 @@ travel-agui/
 │   ├── pyproject.toml    # uv 프로젝트 설정 및 의존성
 │   └── .env.example      # 환경 변수 템플릿
 ├── frontend/
-│   ├── src/              # 프론트엔드 소스 코드
+│   ├── src/              # 프론트엔드 소스 코드 (useAGUIChat/useAgentState가 STATE_DELTA 적용)
 │   ├── tests/            # Playwright Test 기반 E2E 스위트 (이동됨)
 │   │   ├── e2e/          # 서비스별 E2E 시나리오
 │   │   └── README.md
@@ -211,6 +213,7 @@ Gateway → SSE stream:
   data: {"type":"TEXT_MESSAGE_CHUNK", "messageId":"...", "delta":"호텔을 검색합니다..."}
   data: {"type":"TOOL_CALL_START", "toolCallId":"...", "toolCallName":"search_hotels"}
   data: {"type":"TOOL_CALL_ARGS",  "toolCallId":"...", "delta":"{\"city\":\"도쿄\",...}"}
+  data: {"type":"STATE_DELTA",    "delta":[{"op":"replace","path":"/agent_status/current_intent","value":"searching"}, ...]}
   data: {"type":"TOOL_CALL_END",   "toolCallId":"..."}
   data: {"type":"STATE_SNAPSHOT",  "snapshot":{"tool":"search_hotels","result":{...}}}
   data: {"type":"USER_FAVORITE_REQUEST", "requestId":"...", "favoriteType":"hotel_preference", "options":{...}}
@@ -232,7 +235,7 @@ ADK 이벤트를 A2A `TaskArtifactUpdateEvent` 의 파트로 인코딩해 전달
 | `function_response` (결과) | `DataPart` | `{ "tool": "search_hotels", "result": {...} }` |
 | `request_user_input` | `DataPart` | `{ "_agui_event": "USER_INPUT_REQUEST", "requestId": "...", "inputType": "...", "fields": [...] }` |
 | `request_user_favorite` | `DataPart` | `{ "_agui_event": "USER_FAVORITE_REQUEST", "requestId": "...", "favoriteType": "...", "options": {...} }` |
-| `function_call` (agent_state) | `DataPart` | `{ "snapshot_type": "agent_state", "travel_context": {...}, "agent_status": {...} }` |
+| `function_call` (state mutation) | `DataPart` | `{ "_agui_event": "STATE_DELTA", "delta": [...] }` |
 
 #### main.py 변환 규칙
 
@@ -240,9 +243,10 @@ ADK 이벤트를 A2A `TaskArtifactUpdateEvent` 의 파트로 인코딩해 전달
 TextPart          → TEXT_MESSAGE_START / CHUNK / END
 DataPart._agui_event == "TOOL_CALL_START"      → TOOL_CALL_START + TOOL_CALL_ARGS
 DataPart._agui_event == "TOOL_CALL_END"        → TOOL_CALL_END
+DataPart._agui_event == "STATE_DELTA"          → STATE_DELTA (JSON Patch 그대로 전달)
 DataPart._agui_event == "USER_FAVORITE_REQUEST" → USER_FAVORITE_REQUEST (취향 패널 렌더링)
 DataPart._agui_event == "USER_INPUT_REQUEST"   → USER_INPUT_REQUEST (폼 렌더링)
-DataPart (나머지)  → STATE_SNAPSHOT  (프론트 ToolResultCard 렌더링)
+DataPart (나머지)  → STATE_SNAPSHOT  (`tool_result` 등 프론트 ToolResultCard 렌더링)
 TaskStatusUpdateEvent (working)    → STEP_STARTED
 TaskStatusUpdateEvent (completed)  → STEP_FINISHED
 ```
@@ -315,9 +319,9 @@ for msg in body["messages"]:
         msg["id"] = str(uuid.uuid4())
 ```
 
-### 양방향 상태 동기화 (travel_context)
+### 양방향 상태 동기화 (`travel_context` + `user_preferences`)
 
-프론트엔드는 매 요청마다 누적된 `agentState.travel_context`를 서버로 전송합니다. 서버는 이를 파싱해 사용자 메시지 앞에 컨텍스트 블록으로 주입합니다.
+프론트엔드는 매 요청마다 누적된 `agentState.travel_context`, `user_preferences`, `ui_context`를 서버로 전송합니다. 서버는 이를 내부 `StateManager`에 반영하고, `travel_context`를 사용자 메시지 앞 컨텍스트 블록으로 주입합니다.
 
 ```
 [현재 여행 컨텍스트 - 이미 확인된 정보]
@@ -331,9 +335,13 @@ for msg in body["messages"]:
 
 에이전트는 이 컨텍스트를 읽고 날짜·인원을 재사용해 `search_flights` 또는 `request_user_input` 에 자동 반영합니다.
 
-**핵심 상태 보호**: `STATE_SNAPSHOT` 이벤트 수신 시 `destination`, `check_in`, `check_out`, `nights`, `guests`, `origin`, `trip_type` 필드는 null로 덮어쓰지 않습니다. 호텔 상세 조회처럼 부분적인 상태 업데이트가 오더라도 기존 여행 정보가 유지됩니다.
+**클라이언트→서버 state 반영은 내부 동기화 전용**: 현재 `apply_client_state()`는 backend store를 갱신하지만 그 delta를 SSE로 재방출하지는 않습니다.
 
-서버 측 state 관리는 `StateManager`가 담당하며, `thread_id` 기준으로 `TravelState`(TravelContext + UIContext + AgentStatus)를 통합 관리합니다.
+**서버→클라이언트 증분 업데이트**: 도구 호출로 인한 `TravelState` 변화는 `STATE_DELTA`로 전달되고, 프론트는 `useAgentState.applyAgentStateDelta()`에서 JSON Patch를 적용합니다.
+
+**스냅샷 하위 호환**: `STATE_SNAPSHOT(snapshot_type="agent_state")`도 여전히 프론트에서 처리하며, `destination`, `check_in`, `check_out`, `nights`, `guests`, `origin`, `trip_type` 등 핵심 여행 정보는 null로 덮어쓰지 않습니다.
+
+서버 측 state 관리는 `StateManager`가 담당하며, `thread_id` 기준으로 `TravelState`(TravelContext + UIContext + AgentStatus + UserPreferences)를 통합 관리합니다.
 
 ---
 
@@ -410,6 +418,9 @@ cd frontend
 # 전체 E2E 실행
 npm test
 
+# 프론트 빌드 검증
+npm run build
+
 # 브라우저를 보면서 실행
 npm run test:e2e:headed
 
@@ -431,6 +442,19 @@ npm run test:ui
 | `frontend/tests/e2e/form-values.spec.ts` | 호텔 폼 입력값과 제출 상태 확인 |
 | `frontend/tests/e2e/assistant-response-check.spec.ts` | 툴 호출/폼 렌더링 응답 검증 |
 | `frontend/tests/e2e/response-capture.spec.ts` | `/agui/run` SSE 응답 캡처 검증 |
+| `frontend/tests/e2e/state-panel-sidebar/state-panel-updates.spec.ts` | StatePanel 클라이언트/서버 업데이트 및 `STATE_DELTA` 반영 검증 |
+
+### 최근 `STATE_DELTA` 검증 명령
+
+```bash
+cd backend
+uv run pytest
+
+cd ../frontend
+npm run build
+npm test -- tests/e2e/response-capture.spec.ts
+npx playwright test tests/e2e/state-panel-sidebar/state-panel-updates.spec.ts -g "STATE_DELTA"
+```
 
 ### 아티팩트
 

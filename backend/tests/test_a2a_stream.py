@@ -48,6 +48,25 @@ def make_task_status(state_value: str):
     return response
 
 
+def make_data_artifact(data: dict):
+    """DataPart를 담은 TaskArtifactUpdateEvent mock 생성."""
+    from a2a.types import TaskArtifactUpdateEvent, Artifact, DataPart, Part
+
+    part = MagicMock()
+    part.root = DataPart(data=data)
+
+    artifact = MagicMock()
+    artifact.parts = [part]
+
+    event = MagicMock(spec=TaskArtifactUpdateEvent)
+    event.artifact = artifact
+    event.last_chunk = False
+
+    response = MagicMock()
+    response.root.result = event
+    return response
+
+
 async def collect_stream(responses: list) -> list[dict]:
     """a2a_to_agui_stream 결과를 이벤트 목록으로 수집."""
     async def mock_a2a_gen():
@@ -102,3 +121,19 @@ async def test_empty_stream_produces_no_events():
     """빈 A2A 스트림 → 이벤트 없음."""
     events = await collect_stream([])
     assert events == []
+
+
+async def test_state_delta_artifact_produces_state_delta_event():
+    """STATE_DELTA DataPart → STATE_DELTA SSE 이벤트 변환."""
+    events = await collect_stream([
+        make_data_artifact({
+            "_agui_event": "STATE_DELTA",
+            "delta": [
+                {"op": "replace", "path": "/travel_context/destination", "value": "도쿄"},
+                {"op": "replace", "path": "/agent_status/current_intent", "value": "searching"},
+            ],
+        })
+    ])
+    delta_event = next(e for e in events if e["type"] == "STATE_DELTA")
+    assert delta_event["delta"][0]["path"] == "/travel_context/destination"
+    assert delta_event["delta"][1]["value"] == "searching"

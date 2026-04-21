@@ -7,7 +7,7 @@ from datetime import date
 from collections.abc import AsyncGenerator
 from dataclasses import replace, asdict
 
-from ag_ui.core.events import StateSnapshotEvent, EventType
+from ag_ui.core.events import StateSnapshotEvent, StateDeltaEvent, EventType
 
 from .models import TravelState, TravelContext, UIContext, AgentStatus, UserPreferences
 
@@ -25,9 +25,45 @@ class StateManager:
         """현재 state 조회. 없으면 빈 TravelState 반환."""
         return self._store.get(thread_id, TravelState())
 
+    def _to_json_safe(self, value):
+        if isinstance(value, dict):
+            return {key: self._to_json_safe(item) for key, item in value.items()}
+        if isinstance(value, tuple):
+            return [self._to_json_safe(item) for item in value]
+        if isinstance(value, list):
+            return [self._to_json_safe(item) for item in value]
+        return value
+
+    def _diff_values(self, before, after, path: str) -> list[dict]:
+        if isinstance(before, dict) and isinstance(after, dict):
+            ops: list[dict] = []
+            for key in before.keys() | after.keys():
+                child_path = f"{path}/{key}"
+                if key not in before:
+                    ops.append({"op": "add", "path": child_path, "value": self._to_json_safe(after[key])})
+                    continue
+                if key not in after:
+                    ops.append({"op": "remove", "path": child_path})
+                    continue
+                ops.extend(self._diff_values(before[key], after[key], child_path))
+            return ops
+
+        if before == after:
+            return []
+
+        return [{"op": "replace", "path": path, "value": self._to_json_safe(after)}]
+
+    def _build_state_delta(self, before: TravelState, after: TravelState) -> StateDeltaEvent | None:
+        before_dict = self._to_json_safe(asdict(before))
+        after_dict = self._to_json_safe(asdict(after))
+        delta = self._diff_values(before_dict, after_dict, "")
+        if not delta:
+            return None
+        return StateDeltaEvent(type=EventType.STATE_DELTA, delta=delta)
+
     async def apply_client_state(
         self, thread_id: str, raw_state: dict
-    ) -> AsyncGenerator[StateSnapshotEvent, None]:
+    ) -> AsyncGenerator[StateSnapshotEvent | StateDeltaEvent, None]:
         """
         main.py event_stream() 내부 상단(RUN_STARTED 직후)에서 호출.
         raw_state가 비어있으면 이벤트를 yield하지 않는다.
@@ -60,19 +96,13 @@ class StateManager:
         updated = replace(current, travel_context=new_tc, ui_context=new_ui, user_preferences=new_pref)
         self._store[thread_id] = updated
 
-        yield StateSnapshotEvent(
-            type=EventType.STATE_SNAPSHOT,
-            snapshot={
-                "snapshot_type": "client_state",
-                "travel_context": asdict(updated.travel_context),
-                "ui_context": asdict(updated.ui_context),
-                "user_preferences": asdict(updated.user_preferences),
-            },
-        )
+        delta_event = self._build_state_delta(current, updated)
+        if delta_event is not None:
+            yield delta_event
 
     async def apply_tool_call(
         self, thread_id: str, tool_name: str, args: dict
-    ) -> AsyncGenerator[StateSnapshotEvent, None]:
+    ) -> AsyncGenerator[StateSnapshotEvent | StateDeltaEvent, None]:
         """
         executor.py에서 function_call 감지 시 호출 (TOOL_CALL_START 발행 전).
         caller(executor.py)는 event.snapshot을 DataPart로 래핑 후 event_queue에 enqueue한다.
@@ -148,19 +178,9 @@ class StateManager:
         updated = replace(current, travel_context=tc, agent_status=new_status)
         self._store[thread_id] = updated
 
-        yield StateSnapshotEvent(
-            type=EventType.STATE_SNAPSHOT,
-            snapshot={
-                "snapshot_type": "agent_state",
-                "travel_context": asdict(updated.travel_context),
-                "agent_status": {
-                    "current_intent": new_status.current_intent,
-                    "missing_fields": list(new_status.missing_fields),
-                    "active_tool": new_status.active_tool,
-                },
-                "user_preferences": asdict(updated.user_preferences),
-            },
-        )
+        delta_event = self._build_state_delta(current, updated)
+        if delta_event is not None:
+            yield delta_event
 
     async def apply_tool_result(
         self, thread_id: str, tool_name: str, result: dict

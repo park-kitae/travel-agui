@@ -162,7 +162,7 @@ async def test_tool_result_snapshot_enqueued_after_tool_call_end():
 
 @pytest.mark.asyncio
 async def test_agent_state_snapshot_preserves_user_preferences_from_client_metadata():
-    """executor는 A2A metadata의 client_state를 반영한 뒤 agent_state snapshot을 발행해야 한다."""
+    """executor는 A2A metadata의 client_state를 반영한 뒤 관련 STATE_DELTA를 발행해야 한다."""
     mock_runner = MagicMock()
     mock_runner.run_async.return_value = _async_gen(
         _make_function_call_event("request_user_input", {"input_type": "hotel_booking_details", "context": "도쿄"})
@@ -200,7 +200,12 @@ async def test_agent_state_snapshot_preserves_user_preferences_from_client_metad
                 if hasattr(root, "data") and isinstance(root.data, dict):
                     data_list.append(root.data)
 
-    agent_snapshot = next(d for d in data_list if d.get("snapshot_type") == "agent_state")
-    assert agent_snapshot["user_preferences"]["hotel_grade"] == "4성"
-    assert agent_snapshot["user_preferences"]["hotel_type"] == "비즈니스"
-    assert agent_snapshot["user_preferences"]["amenities"] == ("수영장",)
+    state_delta = next(d for d in data_list if d.get("_agui_event") == "STATE_DELTA")
+    delta_by_path = {op["path"]: op for op in state_delta["delta"]}
+    assert delta_by_path["/agent_status/current_intent"]["value"] == "collecting_hotel_params"
+    assert "/user_preferences/hotel_grade" not in delta_by_path
+
+    stored_state = state_manager.get("thread-pref")
+    assert stored_state.user_preferences.hotel_grade == "4성"
+    assert stored_state.user_preferences.hotel_type == "비즈니스"
+    assert stored_state.user_preferences.amenities == ("수영장",)

@@ -29,6 +29,7 @@ graph TB
     subgraph "Frontend (React + Vite)"
         UI[React UI :5173]
         Hook[useAGUIChat Hook]
+        AgentStateHook[useAgentState Hook]
         Components[ChatMessageBubble<br/>ToolResultCard<br/>UserInputForm]
     end
 
@@ -45,7 +46,7 @@ graph TB
         Gemini[Gemini LLM]
     end
 
-    UI -->|POST /agui/run<br/>RunAgentInput| Gateway
+    UI -->|POST /agui/run<br/>RunAgentInput + client_state| Gateway
     Gateway -->|SSE Stream<br/>AG-UI Events| UI
 
     Gateway -->|A2AClient<br/>SendStreamingMessageRequest| A2AClient
@@ -117,18 +118,18 @@ sequenceDiagram
     Frontend-->>User: UI: "도쿄" 표시
 
     Gemini-->>ADK: function_call
-    ADK-->>A2AServer: ADK Event: function_call<br/>{name: "request_user_input"}
-    A2AServer-->>A2AClient: A2A Event: DataPart<br/>{_agui_event: "TOOL_CALL_START"}
+    ADK-->>A2AServer: ADK Event: function_call<br/>{name: "search_hotels"}
+    A2AServer-->>A2AClient: A2A Event: DataPart<br/>{_agui_event: "STATE_DELTA", delta:[...]}
     A2AClient-->>Gateway: Transform
-    Gateway-->>Frontend: SSE: TOOL_CALL_START
-    Frontend-->>User: UI: Tool 실행 표시
+    Gateway-->>Frontend: SSE: STATE_DELTA
+    Frontend-->>User: UI: agent state 증분 반영
 
     Gemini-->>ADK: function_response
-    ADK-->>A2AServer: ADK Event: function_response<br/>{fields: [...]}
-    A2AServer-->>A2AClient: A2A Event: DataPart<br/>{status: "user_input_required"}
+    ADK-->>A2AServer: ADK Event: function_response<br/>{result: {...}} 
+    A2AServer-->>A2AClient: A2A Event: DataPart<br/>{tool: "search_hotels", result: {...}}
     A2AClient-->>Gateway: Transform
     Gateway-->>Frontend: SSE: STATE_SNAPSHOT
-    Frontend-->>User: UI: 입력 폼 렌더링
+    Frontend-->>User: UI: ToolResultCard 렌더링
 
     User->>Frontend: 폼 제출
     Frontend->>Gateway: POST /agui/run<br/>(새 메시지)
@@ -204,86 +205,19 @@ const sendMessage = async (content: string) => {
 
 #### 1.2 AG-UI 이벤트 처리
 
-```typescript
-const handleAGUIEvent = (event: any) => {
-  switch (event.type) {
-    case 'RUN_STARTED':
-      console.log('Run started:', event.runId);
-      break;
+현재 프론트엔드의 이벤트 처리는 `frontend/src/hooks/useAGUIChat.ts`의 `handleEvent()`와 `frontend/src/hooks/useAgentState.ts`로 분리되어 있습니다.
 
-    case 'TEXT_MESSAGE_START':
-      // 새 어시스턴트 메시지 시작
-      setMessages(prev => [...prev, {
-        id: event.messageId,
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now(),
-      }]);
-      break;
+| 이벤트 | 처리 위치 | 동작 |
+|---|---|---|
+| `TEXT_MESSAGE_CHUNK` | `useAGUIChat.ts` | assistant 메시지 본문 누적 |
+| `TOOL_CALL_START/ARGS/END` | `useAGUIChat.ts` | 툴 실행 상태 표시 |
+| `STATE_DELTA` | `useAGUIChat.ts` → `useAgentState.ts` | JSON Patch를 local state envelope에 적용 |
+| `STATE_SNAPSHOT(snapshot_type="agent_state")` | `useAGUIChat.ts` → `useAgentState.ts` | snapshot merge 경로로 상태 반영 |
+| `STATE_SNAPSHOT(tool_result)` | `useAGUIChat.ts` | ToolResultCard 렌더링용 snapshot 저장 |
+| `USER_INPUT_REQUEST` | `useAGUIChat.ts` | 대화형 폼 렌더링 |
+| `USER_FAVORITE_REQUEST` | `useAGUIChat.ts` | 취향 패널 표시 |
 
-    case 'TEXT_MESSAGE_CHUNK':
-      // 텍스트 스트리밍
-      setMessages(prev => prev.map(m =>
-        m.id === event.messageId
-          ? { ...m, content: m.content + event.delta }
-          : m
-      ));
-      break;
-
-    case 'TOOL_CALL_START':
-      // 툴 실행 시작
-      setToolCalls(prev => [...prev, {
-        id: event.toolCallId,
-        name: event.toolCallName,
-        status: 'running',
-        args: {},
-      }]);
-      break;
-
-    case 'TOOL_CALL_ARGS':
-      // 툴 인자 수신
-      setToolCalls(prev => prev.map(tc =>
-        tc.id === event.toolCallId
-          ? { ...tc, args: { ...tc.args, ...JSON.parse(event.delta) } }
-          : tc
-      ));
-      break;
-
-    case 'STATE_SNAPSHOT':
-      if (snapshot.snapshot_type === 'agent_state') {
-        // 핵심 여행 정보(destination, check_in, check_out, nights, guests, origin, trip_type)는
-        // null로 덮어쓰지 않음 → 호텔 상세 조회 등 부분 업데이트 시 기존 값 보호
-        const PERSISTENT_FIELDS = ['destination','check_in','check_out','nights','guests','origin','trip_type'];
-        setAgentState(prev => {
-          const merged = { ...prev?.travel_context };
-          for (const [key, value] of Object.entries(snapshot.travel_context)) {
-            if (PERSISTENT_FIELDS.includes(key) && value === null && merged[key] != null) continue;
-            merged[key] = value;
-          }
-          return { travel_context: merged, agent_status: snapshot.agent_status };
-        });
-      } else {
-        // tool_result → ToolResultCard 렌더링
-        updateMessage(assistantId, m => ({ ...m, snapshots: [...m.snapshots, snapshot] }));
-      }
-      break;
-
-    case 'USER_FAVORITE_REQUEST':
-      // 취향 수집 패널 표시
-      setPendingFavoriteRequest({
-        requestId: event.requestId,
-        favoriteType: event.favoriteType,
-        options: event.options,
-        submitted: false,
-      });
-      break;
-
-    case 'RUN_FINISHED':
-      console.log('Run finished');
-      break;
-  }
-};
-```
+`STATE_DELTA`는 RFC 6902 JSON Patch 그대로 적용되고, `STATE_SNAPSHOT`은 하위 호환 경로로 유지됩니다.
 
 #### 1.3 UI 렌더링
 
@@ -342,33 +276,33 @@ export function ToolResultCard({ result }: { result: any }) {
 
 ### 2. State Management Layer
 
-**핵심 역할**: `StateManager`는 싱글톤으로 `main.py`와 `executor.py` 간에 공유되며, `thread_id` 기준으로 `TravelState`(TravelContext + UIContext + AgentStatus)를 통합 관리합니다.
+**핵심 역할**: `StateManager`는 싱글톤으로 `main.py`와 `executor.py` 간에 공유되며, `thread_id` 기준으로 `TravelState`(TravelContext + UIContext + AgentStatus + UserPreferences)를 통합 관리합니다.
 
 **파일**: `backend/state/manager.py`, `backend/state/models.py`
 
 #### 2.1 StateManager 메서드
 
 - `get(thread_id)` → 현재 `TravelState` 반환
-- `apply_client_state(thread_id, raw_state)` → 클라이언트 상태 적용, `StateSnapshotEvent` yield (메인 레이어에서 SSE로 직접 인코딩)
-- `apply_tool_call(thread_id, tool_name, args)` → 툴 호출 반영, `StateSnapshotEvent` yield (executor에서 `TaskArtifactUpdateEvent(DataPart)` 래핑)
-- `apply_tool_result(thread_id, tool_name, result)` → 툴 결과 반영
+- `apply_client_state(thread_id, raw_state)` → 클라이언트 상태를 backend store에 적용, 필요 시 `StateDeltaEvent` 생성 (현재 caller가 SSE로 재방출하지 않음)
+- `apply_tool_call(thread_id, tool_name, args)` → 툴 호출 반영, 변경분이 있으면 `StateDeltaEvent` yield
+- `apply_tool_result(thread_id, tool_name, result)` → 툴 결과/입력 요청을 `StateSnapshotEvent`로 yield
 - `get_tc_id(thread_id, tool_name)` → 특정 tool_call의 ID 반환
 - `clear(thread_id)` → 스레드 정리
 
 #### 2.2 SSE 인코딩 흐름
 
-1. **apply_client_state** (main.py에서 호출)
-   - 클라이언트 상태 수신 → `StateSnapshotEvent` yield
-   - Main은 이를 직접 AG-UI `STATE_SNAPSHOT` 이벤트로 인코딩 → SSE 전송
+1. **apply_client_state** (`main.py`, `executor.py`에서 호출)
+   - 클라이언트 상태를 backend store에만 반영
+   - 반환값은 현재 SSE로 forward하지 않음
 
-2. **apply_tool_call / apply_tool_result** (executor.py에서 호출)
-   - 도구 호출/결과 발생 → `StateSnapshotEvent` yield
-   - Executor는 이를 `TaskArtifactUpdateEvent(DataPart)` 래핑 → A2AServer에 enqueue
-   - Main의 A2A 변환기가 `DataPart` → `STATE_SNAPSHOT` 이벤트 변환
+2. **apply_tool_call** (`executor.py`에서 호출)
+   - 도구 호출 인자로 `TravelState` 갱신
+   - 변경분이 있으면 `StateDeltaEvent` 생성
+   - Executor는 이를 `DataPart({_agui_event: "STATE_DELTA", delta: [...]})`로 enqueue
 
-3. **특수 케이스: request_user_input**
-   - `status == "user_input_required"` → `snapshot_type: "user_input_request"`로 마킹
-   - Main은 `_agui_event: "USER_INPUT_REQUEST"` DataPart로 인코딩 → 프론트에서 폼 렌더링
+3. **apply_tool_result** (`executor.py`에서 호출)
+   - `tool_result`, `user_input_request`, `user_favorite_request`를 `StateSnapshotEvent`로 생성
+   - Converter가 이를 `STATE_SNAPSHOT`, `USER_INPUT_REQUEST`, `USER_FAVORITE_REQUEST`로 변환
 
 ---
 
@@ -378,6 +312,8 @@ export function ToolResultCard({ result }: { result: any }) {
 
 **파일**: `backend/main.py`
 
+현재 구현에서는 `httpx.AsyncClient`와 `A2AClient`를 모듈 전역에서 고정 생성하지 않고, 각 요청의 `event_stream()` 내부에서 agent card를 조회한 뒤 `A2AClient`를 구성합니다. 아래 예시는 흐름 설명용 의사코드입니다.
+
 ```python
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
@@ -385,13 +321,6 @@ from a2a_sdk import A2AClient, SendStreamingMessageRequest, MessageSendParams
 import httpx
 
 app = FastAPI()
-
-# A2A 클라이언트 초기화
-http_client = httpx.AsyncClient(timeout=60.0)
-a2a_client = A2AClient(
-    httpx_client=http_client,
-    agent_card=agent_card  # A2A 서버의 AgentCard
-)
 
 @app.post("/agui/run")
 async def handle_run(body: dict):
@@ -801,8 +730,9 @@ def create_travel_agent() -> LlmAgent:
 | `TaskArtifactUpdateEvent(TextPart)` | `TEXT_MESSAGE_START`<br/>`TEXT_MESSAGE_CHUNK`<br/>`TEXT_MESSAGE_END` | 텍스트 스트리밍 |
 | `TaskArtifactUpdateEvent(DataPart)`<br/>with `_agui_event=TOOL_CALL_START` | `TOOL_CALL_START`<br/>`TOOL_CALL_ARGS` | 툴 호출 시작 |
 | `TaskArtifactUpdateEvent(DataPart)`<br/>with `_agui_event=TOOL_CALL_END` | `TOOL_CALL_END` | 툴 호출 종료 |
+| `TaskArtifactUpdateEvent(DataPart)`<br/>with `_agui_event=STATE_DELTA` | `STATE_DELTA` | agent/tool-call state 증분 패치 |
 | `TaskArtifactUpdateEvent(DataPart)`<br/>with `_agui_event=USER_FAVORITE_REQUEST` | `USER_FAVORITE_REQUEST` | 취향 수집 패널 렌더링 |
-| `TaskArtifactUpdateEvent(DataPart)`<br/>(other) | `STATE_SNAPSHOT` | 툴 결과 또는 상태 |
+| `TaskArtifactUpdateEvent(DataPart)`<br/>(other) | `STATE_SNAPSHOT` | `tool_result` snapshot |
 
 ---
 
@@ -1013,8 +943,8 @@ sequenceDiagram
 
     Gemini-->>Agent: function_response: {fields: [...]}
     Agent-->>A2AServer: ADK Event: function_response
-    A2AServer-->>Gateway: A2A DataPart (result)
-    Gateway-->>Frontend: AG-UI: STATE_SNAPSHOT
+    A2AServer-->>Gateway: A2A DataPart (_agui_event=USER_INPUT_REQUEST)
+    Gateway-->>Frontend: AG-UI: USER_INPUT_REQUEST
     Frontend-->>User: 🎯 입력 폼 렌더링
 
     User->>Frontend: 폼 제출 (날짜, 인원 입력)
@@ -1022,45 +952,29 @@ sequenceDiagram
     Note right of Gateway: 새로운 라운드 시작
 ```
 
-#### AG-UI STATE_SNAPSHOT 이벤트
+#### AG-UI USER_INPUT_REQUEST 이벤트
 
 ```json
 {
-  "type": "STATE_SNAPSHOT",
-  "snapshot": {
-    "status": "user_input_required",
-    "input_type": "hotel_booking_details",
-    "fields": [
-      {
-        "name": "city",
-        "type": "text",
-        "label": "도시",
-        "required": true,
-        "default": "서울"
-      },
-      {
-        "name": "check_in",
-        "type": "date",
-        "label": "체크인",
-        "required": true,
-        "default": "2026-04-16"
-      },
-      {
-        "name": "check_out",
-        "type": "date",
-        "label": "체크아웃",
-        "required": true,
-        "default": "2026-04-17"
-      },
-      {
-        "name": "guests",
-        "type": "number",
-        "label": "인원수",
-        "required": true,
-        "default": "2"
-      }
-    ]
-  }
+  "type": "USER_INPUT_REQUEST",
+  "requestId": "req-123",
+  "inputType": "hotel_booking_details",
+  "fields": [
+    {
+      "name": "city",
+      "type": "text",
+      "label": "도시",
+      "required": true,
+      "default": "서울"
+    },
+    {
+      "name": "check_in",
+      "type": "date",
+      "label": "체크인",
+      "required": true,
+      "default": "2026-04-16"
+    }
+  ]
 }
 ```
 
@@ -1124,6 +1038,9 @@ const handleAGUIEvent = (event: any) => {
   switch (event.type) {
     case 'TEXT_MESSAGE_CHUNK':
       console.log('[Frontend] Text chunk:', event.delta);
+      break;
+    case 'STATE_DELTA':
+      console.log('[Frontend] State delta:', JSON.stringify(event.delta, null, 2));
       break;
     case 'STATE_SNAPSHOT':
       console.log('[Frontend] State snapshot:', JSON.stringify(event.snapshot, null, 2));
@@ -1204,6 +1121,6 @@ curl -N http://localhost:8001/tasks/task-id/stream
 
 1. **ADK (Google Agent Development Kit)**: LLM과 FunctionTool을 사용한 에이전트 구현
 2. **A2A Protocol**: 에이전트 간 표준 통신 프로토콜
-3. **AG-UI Protocol**: 에이전트와 UI 간의 실시간 스트리밍 프로토콜
+3. **AG-UI Protocol**: 에이전트와 UI 간의 실시간 스트리밍 프로토콜 (`STATE_DELTA` + `STATE_SNAPSHOT` 병행)
 
 각 레이어는 명확한 책임을 가지며, 이벤트 변환 과정을 통해 원활하게 통신합니다. 이를 통해 사용자는 자연어로 에이전트와 대화하고, 실시간으로 결과를 받아볼 수 있습니다.

@@ -8,11 +8,12 @@ import {
   FavoriteRequest,
   ClientState,
   UserPreferences,
-  DEFAULT_SESSION_PREFS,
-  isAgentStateSnapshot,
-  isUserInputRequestEvent,
-  isUserFavoriteRequestEvent,
-} from '../types'
+    DEFAULT_SESSION_PREFS,
+    isAgentStateSnapshot,
+    isStateDeltaEvent,
+    isUserInputRequestEvent,
+    isUserFavoriteRequestEvent,
+  } from '../types'
 import { useAgentState } from './useAgentState'
 import { useChatMessages } from './useChatMessages'
 
@@ -34,6 +35,7 @@ export function useAGUIChat() {
     uiContext,
     pendingFavoriteRequest,
     applyAgentStateSnapshot,
+    applyAgentStateDelta,
     updateUiContext,
     updateUserPreferences,
     setPendingFavoriteRequest,
@@ -143,6 +145,7 @@ export function useAGUIChat() {
             toolArgsBuffer,
             updateMessage,
             applyAgentStateSnapshot,
+            applyAgentStateDelta,
             setPendingFavoriteRequest,
           )
         }
@@ -158,7 +161,7 @@ export function useAGUIChat() {
       setIsRunning(false)
       isRunningRef.current = false
     }
-  }, [messages, agentState, uiContext, updateMessage, addMessage, applyAgentStateSnapshot, setPendingFavoriteRequest])
+  }, [messages, agentState, uiContext, updateMessage, addMessage, applyAgentStateSnapshot, applyAgentStateDelta, setPendingFavoriteRequest])
 
   const stopStreaming = useCallback(() => {
     abortRef.current?.abort()
@@ -263,6 +266,7 @@ function handleEvent(
   toolArgsBuffer: Record<string, string>,
   updateMessage: (id: string, fn: (m: ChatMessage) => ChatMessage) => void,
   applyAgentStateSnapshot: (s: AgentStateSnapshot) => void,
+  applyAgentStateDelta: (delta: { op: 'add' | 'remove' | 'replace'; path: string; value?: unknown }[]) => void,
   setPendingFavoriteRequest: (value: FavoriteRequest | null) => void,
 ) {
   switch (event.type) {
@@ -323,6 +327,14 @@ function handleEvent(
       } else {
         updateMessage(assistantId, m => ({ ...m, snapshots: [...m.snapshots, snapshot] }))
       }
+      break
+    }
+
+    case 'STATE_DELTA': {
+      if (!isStateDeltaEvent(event)) {
+        break
+      }
+      applyAgentStateDelta(event.delta)
       break
     }
 

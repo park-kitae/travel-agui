@@ -1,4 +1,4 @@
-from .models import TravelState, TravelContext, UIContext, AgentStatus
+from .models import TravelState, TravelContext, UIContext, AgentStatus, UserPreferences
 from .manager import StateManager
 from .context_builder import ContextBuilder
 
@@ -12,4 +12,5 @@ __all__ = [
     "TravelContext",
     "UIContext",
     "AgentStatus",
+    "UserPreferences",
 ]
