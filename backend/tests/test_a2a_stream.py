@@ -3,15 +3,19 @@ a2a_to_agui_stream 변환 로직 단위 테스트
 A2A 이벤트를 직접 생성하여 AG-UI 이벤트로 올바르게 변환되는지 검증
 """
 import json
-import pytest
-from unittest.mock import MagicMock
+import pytest  # type: ignore[reportMissingImports]
+from unittest.mock import AsyncMock, MagicMock
 
 from converter import a2a_to_agui_stream
+from domain_runtime import DomainRuntime
+from domains.travel.plugin import get_plugin
+from executor import ADKAgentExecutor
+from state.store import SerializedStateStore
 
 
 def make_text_artifact(text: str, last_chunk: bool = True):
     """TextPart를 담은 TaskArtifactUpdateEvent mock 생성."""
-    from a2a.types import TaskArtifactUpdateEvent, Artifact, Part, TextPart
+    from a2a.types import TaskArtifactUpdateEvent, Artifact, Part, TextPart  # type: ignore[reportMissingImports]
 
     part = MagicMock()
     part.root = TextPart(text=text)
@@ -30,7 +34,7 @@ def make_text_artifact(text: str, last_chunk: bool = True):
 
 def make_task_status(state_value: str):
     """TaskStatusUpdateEvent mock 생성."""
-    from a2a.types import TaskStatusUpdateEvent, TaskState
+    from a2a.types import TaskStatusUpdateEvent, TaskState  # type: ignore[reportMissingImports]
 
     state_map = {
         "working": TaskState.working,
@@ -50,7 +54,7 @@ def make_task_status(state_value: str):
 
 def make_data_artifact(data: dict):
     """DataPart를 담은 TaskArtifactUpdateEvent mock 생성."""
-    from a2a.types import TaskArtifactUpdateEvent, Artifact, DataPart, Part
+    from a2a.types import TaskArtifactUpdateEvent, Artifact, DataPart, Part  # type: ignore[reportMissingImports]
 
     part = MagicMock()
     part.root = DataPart(data=data)
@@ -65,6 +69,76 @@ def make_data_artifact(data: dict):
     response = MagicMock()
     response.root.result = event
     return response
+
+
+def make_event_response(event):
+    response = MagicMock()
+    response.root.result = event
+    return response
+
+
+def make_function_call_adk_event(tool_name: str, args: dict):
+    fc = MagicMock()
+    fc.name = tool_name
+    fc.args = args
+
+    part = MagicMock()
+    part.text = None
+    part.function_call = fc
+    part.function_response = None
+
+    content = MagicMock()
+    content.parts = [part]
+
+    event = MagicMock()
+    event.content = content
+    event.is_final_response.return_value = False
+    return event
+
+
+def make_function_response_adk_event(tool_name: str, response_data: dict):
+    fr = MagicMock()
+    fr.name = tool_name
+    fr.response = response_data
+
+    part = MagicMock()
+    part.text = None
+    part.function_call = None
+    part.function_response = fr
+
+    content = MagicMock()
+    content.parts = [part]
+
+    event = MagicMock()
+    event.content = content
+    event.is_final_response.return_value = False
+    return event
+
+
+async def _async_gen(*items):
+    for item in items:
+        yield item
+
+
+async def execute_and_collect_stream(adk_events: list, *, metadata: dict | None = None) -> list[dict]:
+    runtime = DomainRuntime(plugin=get_plugin(), state_store=SerializedStateStore())
+    mock_runner = MagicMock()
+    mock_runner.run_async.return_value = _async_gen(*adk_events)
+    mock_session_service = AsyncMock()
+    mock_session_service.get_session.return_value = MagicMock()
+
+    executor = ADKAgentExecutor(mock_runner, mock_session_service, runtime=runtime)
+    event_queue = AsyncMock()
+    context = MagicMock()
+    context.task_id = "task-1"
+    context.context_id = "thread-1"
+    context.get_user_input.return_value = "도쿄 호텔 추천해줘"
+    context.metadata = metadata or {}
+
+    await executor.execute(context, event_queue)
+
+    responses = [make_event_response(call.args[0]) for call in event_queue.enqueue_event.call_args_list]
+    return await collect_stream(responses)
 
 
 async def collect_stream(responses: list) -> list[dict]:
@@ -137,3 +211,76 @@ async def test_state_delta_artifact_produces_state_delta_event():
     delta_event = next(e for e in events if e["type"] == "STATE_DELTA")
     assert delta_event["delta"][0]["path"] == "/travel_context/destination"
     assert delta_event["delta"][1]["value"] == "searching"
+
+
+@pytest.mark.asyncio
+async def test_runtime_backed_executor_stream_emits_state_delta_and_snapshot_events():
+    events = await execute_and_collect_stream(
+        [
+            make_function_call_adk_event(
+                "search_hotels",
+                {
+                    "city": "도쿄",
+                    "check_in": "2026-06-10",
+                    "check_out": "2026-06-14",
+                    "guests": 2,
+                },
+            ),
+            make_function_response_adk_event(
+                "search_hotels",
+                {"status": "success", "hotels": [{"code": "HTL001", "name": "신주쿠 호텔"}]},
+            ),
+        ]
+    )
+
+    types = [event["type"] for event in events]
+    assert "STATE_DELTA" in types
+    assert "STATE_SNAPSHOT" in types
+    assert "TOOL_CALL_START" in types
+    assert "TOOL_CALL_END" in types
+    assert types.index("STATE_DELTA") < types.index("TOOL_CALL_START")
+    assert types.index("TOOL_CALL_END") < types.index("STATE_SNAPSHOT")
+
+    snapshot_event = next(event for event in events if event["type"] == "STATE_SNAPSHOT")
+    assert snapshot_event["snapshot"]["snapshot_type"] == "tool_result"
+    assert snapshot_event["snapshot"]["tool"] == "search_hotels"
+
+
+@pytest.mark.asyncio
+async def test_runtime_backed_executor_stream_emits_user_input_request_event():
+    events = await execute_and_collect_stream(
+        [
+            make_function_response_adk_event(
+                "request_user_input",
+                {
+                    "status": "user_input_required",
+                    "input_type": "hotel_booking_details",
+                    "fields": [{"name": "check_in", "type": "date"}],
+                },
+            )
+        ]
+    )
+
+    request_event = next(event for event in events if event["type"] == "USER_INPUT_REQUEST")
+    assert request_event["input_type"] == "hotel_booking_details"
+    assert request_event["fields"] == [{"name": "check_in", "type": "date"}]
+
+
+@pytest.mark.asyncio
+async def test_runtime_backed_executor_stream_emits_user_favorite_request_event():
+    events = await execute_and_collect_stream(
+        [
+            make_function_response_adk_event(
+                "request_user_favorite",
+                {
+                    "status": "user_favorite_required",
+                    "favorite_type": "hotel_preference",
+                    "options": {"hotel_grade": {"choices": ["4성", "5성"]}},
+                },
+            )
+        ]
+    )
+
+    favorite_event = next(event for event in events if event["type"] == "USER_FAVORITE_REQUEST")
+    assert favorite_event["favoriteType"] == "hotel_preference"
+    assert favorite_event["options"] == {"hotel_grade": {"choices": ["4성", "5성"]}}
