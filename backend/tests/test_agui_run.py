@@ -3,9 +3,10 @@
 A2A 서버를 mock하여 실제 서버 없이 SSE 스트림 검증
 """
 import json
-import pytest
+from types import SimpleNamespace
+import pytest  # type: ignore[reportMissingImports]
 from unittest.mock import AsyncMock, patch, MagicMock
-from a2a.types import Artifact, DataPart, Part, TaskArtifactUpdateEvent
+from a2a.types import Artifact, DataPart, Part, TaskArtifactUpdateEvent  # type: ignore[reportMissingImports]
 
 
 def make_request_body(user_message: str = "서울 호텔 추천해줘") -> dict:
@@ -56,12 +57,27 @@ def make_agent_state_artifact(snapshot: dict) -> MagicMock:
     return response
 
 
+def make_runtime(current_state=None, merged_state=None, enriched_message: str = "[enriched] 서울 호텔 추천해줘"):
+    runtime = MagicMock()
+    runtime.get_state.return_value = current_state if current_state is not None else {"stored": True}
+    runtime.prepare_request.return_value = SimpleNamespace(
+        state=merged_state if merged_state is not None else {"merged": True},
+        user_message=enriched_message,
+    )
+    return runtime
+
+
 async def test_run_agent_empty_messages_uses_fallback(client):
     """messages가 빈 리스트이면 기본 메시지('안녕하세요')로 A2A 호출."""
     body = make_request_body()
     body["messages"] = []
+    runtime = make_runtime(enriched_message="안녕하세요")
 
-    with patch("main.httpx.AsyncClient") as mock_http:
+    with (
+        patch("main.httpx.AsyncClient") as mock_http,
+        patch("main.initialize_runtime_or_die"),
+        patch("main.get_runtime", return_value=runtime),
+    ):
         mock_http_instance = AsyncMock()
         mock_http_instance.get = AsyncMock(side_effect=Exception("연결 실패"))
         mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http_instance)
@@ -86,11 +102,14 @@ async def test_run_agent_sse_starts_and_ends(client):
     mock_card = MagicMock()
     mock_a2a_client = MagicMock()
     mock_a2a_client.send_message_streaming = mock_a2a_stream
+    runtime = make_runtime(enriched_message="[runtime-context] 서울 호텔 추천해줘")
 
     with (
         patch("main.httpx.AsyncClient") as mock_http,
         patch("main.AgentCard.model_validate", return_value=mock_card),
         patch("main.A2AClient", return_value=mock_a2a_client),
+        patch("main.initialize_runtime_or_die"),
+        patch("main.get_runtime", return_value=runtime),
     ):
         mock_response = AsyncMock()
         mock_response.json = MagicMock(return_value={"name": "test-agent", "url": "http://test"})
@@ -118,7 +137,13 @@ async def test_run_agent_sse_starts_and_ends(client):
 async def test_run_agent_a2a_error_returns_run_error(client):
     """A2A 서버 연결 실패 시 RUN_ERROR 이벤트가 포함되어야 한다."""
 
-    with patch("main.httpx.AsyncClient") as mock_http:
+    runtime = make_runtime(enriched_message="[runtime-context] 서울 호텔 추천해줘")
+
+    with (
+        patch("main.httpx.AsyncClient") as mock_http,
+        patch("main.initialize_runtime_or_die"),
+        patch("main.get_runtime", return_value=runtime),
+    ):
         mock_http_instance = AsyncMock()
         mock_http_instance.get = AsyncMock(side_effect=Exception("연결 실패"))
         mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http_instance)
@@ -184,11 +209,20 @@ async def test_run_agent_forwards_client_state_in_metadata_and_avoids_duplicate_
         },
         "ui_context": {"selected_hotel_code": None, "selected_flight_id": None},
     }
+    current_state = {"travel_context": {"destination": "서울"}}
+    merged_state = {"travel_context": {"destination": "도쿄", "guests": 2}}
+    runtime = make_runtime(
+        current_state=current_state,
+        merged_state=merged_state,
+        enriched_message="[runtime-context] 도쿄 호텔 추천해줘",
+    )
 
     with (
         patch("main.httpx.AsyncClient") as mock_http,
         patch("main.AgentCard.model_validate", return_value=mock_card),
         patch("main.A2AClient", return_value=mock_a2a_client),
+        patch("main.initialize_runtime_or_die"),
+        patch("main.get_runtime", return_value=runtime),
     ):
         mock_response = AsyncMock()
         mock_response.json = MagicMock(return_value={"name": "test-agent", "url": "http://test"})
@@ -210,3 +244,26 @@ async def test_run_agent_forwards_client_state_in_metadata_and_avoids_duplicate_
 
     sent_request = mock_a2a_client.send_message_streaming.call_args.args[0]
     assert sent_request.params.metadata == {"client_state": body["state"]}
+    runtime.prepare_request.assert_called_once_with("test-thread-001", body["state"], "도쿄 호텔 추천해줘")
+    assert sent_request.params.message.parts[0].root.text == "[runtime-context] 도쿄 호텔 추천해줘"
+
+
+async def test_run_agent_runtime_preparation_error_returns_run_error(client):
+    """Runtime-backed pre-A2A preparation failures still yield RUN_ERROR and RUN_FINISHED."""
+
+    runtime = MagicMock()
+    runtime.prepare_request.side_effect = RuntimeError("state merge failed")
+
+    with (
+        patch("main.initialize_runtime_or_die"),
+        patch("main.get_runtime", return_value=runtime),
+    ):
+        response = await client.post("/agui/run", json=make_request_body())
+
+    assert response.status_code == 200
+    events = parse_sse_events(response.text)
+    event_types = [event.get("type") for event in events]
+
+    assert event_types == ["RUN_STARTED", "RUN_ERROR", "RUN_FINISHED"]
+    assert events[1]["message"] == "state merge failed"
+    assert events[1]["code"] == "A2A_ERROR"

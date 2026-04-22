@@ -12,14 +12,14 @@ import uuid
 import logging
 from typing import AsyncGenerator
 
-import httpx
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from dotenv import load_dotenv
+import httpx  # type: ignore[reportMissingImports]
+from fastapi import FastAPI, Request  # type: ignore[reportMissingImports]
+from fastapi.middleware.cors import CORSMiddleware  # type: ignore[reportMissingImports]
+from fastapi.responses import StreamingResponse  # type: ignore[reportMissingImports]
+from dotenv import load_dotenv  # type: ignore[reportMissingImports]
 
-from a2a.client import A2AClient
-from a2a.types import (
+from a2a.client import A2AClient  # type: ignore[reportMissingImports]
+from a2a.types import (  # type: ignore[reportMissingImports]
     AgentCard,
     SendStreamingMessageRequest,
     MessageSendParams,
@@ -29,7 +29,7 @@ from a2a.types import (
     Role,
 )
 
-from ag_ui.core.events import (
+from ag_ui.core.events import (  # type: ignore[reportMissingImports]
     RunAgentInput,
     RunStartedEvent,
     RunFinishedEvent,
@@ -37,7 +37,7 @@ from ag_ui.core.events import (
     EventType,
 )
 from converter import a2a_to_agui_stream, encoder
-from state import state_manager, ContextBuilder
+from domain_runtime import get_runtime, initialize_runtime_or_die
 
 # ──────────────────────────────────────────────
 load_dotenv()
@@ -107,19 +107,17 @@ async def run_agent(request: Request):
             thread_id=thread_id,
         ))
 
-        # 2. 클라이언트 state 반영 (서버 내부 저장 전용 — 스트림으로 재방출하지 않음)
         raw_state = body.get("state") or {}
-        async for _ in state_manager.apply_client_state(thread_id, raw_state):
-            pass
-
-        # 3. 컨텍스트 주입 (최신 state 조회)
-        state = state_manager.get(thread_id)
-        builder = ContextBuilder(state)
-        user_message = builder.build_context_block(user_message, thread_id)
 
         try:
+            # 2. 클라이언트 state 반영 + 컨텍스트 주입
+            initialize_runtime_or_die()
+            runtime = get_runtime()
+            prepared_request = runtime.prepare_request(thread_id, raw_state, user_message)
+            user_message = prepared_request.user_message
+
             async with httpx.AsyncClient(timeout=120.0) as http_client:
-                # 2. A2A 에이전트 카드 조회 후 클라이언트 생성
+                # 3. A2A 에이전트 카드 조회 후 클라이언트 생성
                 card_resp = await http_client.get(
                     f"{A2A_SERVER_URL}/.well-known/agent.json"
                 )
@@ -127,7 +125,7 @@ async def run_agent(request: Request):
                 agent_card = AgentCard.model_validate(card_resp.json())
                 a2a_client = A2AClient(httpx_client=http_client, agent_card=agent_card)
 
-                # 3. A2A 스트리밍 요청
+                # 4. A2A 스트리밍 요청
                 msg_kwargs: dict = {
                     "role": Role.user,
                     "parts": [Part(root=TextPart(text=user_message))],
@@ -145,7 +143,7 @@ async def run_agent(request: Request):
 
                 a2a_stream = a2a_client.send_message_streaming(a2a_request)
 
-                # 4. A2A → AG-UI 변환 스트림
+                # 5. A2A → AG-UI 변환 스트림
                 async for ag_ui_event_str in a2a_to_agui_stream(a2a_stream, run_id, thread_id):
                     yield ag_ui_event_str
 
@@ -184,6 +182,6 @@ async def health():
 
 
 if __name__ == "__main__":
-    import uvicorn
+    import uvicorn  # type: ignore[reportMissingImports]
     logger.info("AG-UI 게이트웨이 서버 시작 (포트 8000)")
     uvicorn.run(app, host="0.0.0.0", port=8000)

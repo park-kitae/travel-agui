@@ -1,50 +1,33 @@
-"""
-test_main_state_handling.py — main.py의 event_stream()에서
-StateManager.apply_client_state가 올바르게 호출되는지 검증
-"""
-import pytest
+"""Runtime-backed state handling tests for main.py."""
+from types import SimpleNamespace
+
+import pytest  # type: ignore[reportMissingImports]
 from unittest.mock import AsyncMock, MagicMock, patch
-from ag_ui.core.events import StateSnapshotEvent, EventType
 
 
 @pytest.mark.asyncio
-async def test_apply_client_state_called_with_body_state():
-    """event_stream 내에서 body['state']가 apply_client_state에 전달된다."""
+async def test_runtime_merges_client_state_and_saves_for_thread():
+    """event_stream delegates request preparation to the runtime helper."""
     from main import app
-    from httpx import AsyncClient, ASGITransport
+    from httpx import AsyncClient, ASGITransport  # type: ignore[reportMissingImports]
 
     raw_state = {
         "travel_context": {"destination": "도쿄"},
         "ui_context": {"selected_hotel_code": "HTL-001"},
     }
 
-    mock_snapshot = StateSnapshotEvent(
-        type=EventType.STATE_SNAPSHOT,
-        snapshot={"snapshot_type": "client_state", "travel_context": {}, "ui_context": {}},
-    )
-
-    captured_args: dict = {}
-
-    async def mock_apply_client_state(thread_id, raw):
-        captured_args["thread_id"] = thread_id
-        captured_args["raw_state"] = raw
-        yield mock_snapshot
-
-    mock_state_mgr = MagicMock()
-    mock_state_mgr.apply_client_state = mock_apply_client_state
-    mock_state_mgr.get.return_value = MagicMock(
-        travel_context=MagicMock(
-            destination=None, origin=None, check_in=None,
-            check_out=None, nights=None, guests=None, trip_type=None,
-        ),
-        ui_context=MagicMock(selected_hotel_code=None),
+    mock_runtime = MagicMock()
+    mock_runtime.prepare_request.return_value = SimpleNamespace(
+        state={"travel_context": {"destination": "도쿄"}, "ui_context": {"selected_hotel_code": "HTL-001"}},
+        user_message="[runtime-context] 테스트",
     )
 
     async def empty_stream():
         return
         yield  # async generator
 
-    with patch("main.state_manager", mock_state_mgr), \
+    with patch("main.initialize_runtime_or_die"), \
+         patch("main.get_runtime", return_value=mock_runtime), \
          patch("main.httpx.AsyncClient") as mock_http:
         mock_http_instance = AsyncMock()
         mock_http.return_value.__aenter__.return_value = mock_http_instance
@@ -74,4 +57,4 @@ async def test_apply_client_state_called_with_body_state():
                 response = await ac.post("/agui/run", json=payload)
                 _ = response.content
 
-    assert captured_args.get("raw_state") == raw_state
+    mock_runtime.prepare_request.assert_called_once_with("test-thread", raw_state, "테스트")
