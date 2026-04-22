@@ -1,6 +1,13 @@
-import pytest
+import pytest  # type: ignore[reportMissingImports]
 from dataclasses import replace, FrozenInstanceError
-from state.models import TravelContext, UIContext, AgentStatus, TravelState
+
+from domains.travel.state import (
+    AgentStatus,
+    TravelContext,
+    TravelState,
+    UIContext,
+    UserPreferences,
+)
 
 
 def test_travel_context_defaults():
@@ -59,7 +66,6 @@ def test_travel_state_replace():
 
 
 def test_user_preferences_defaults():
-    from state.models import UserPreferences
     prefs = UserPreferences()
     assert prefs.hotel_grade is None
     assert prefs.hotel_type is None
@@ -71,14 +77,12 @@ def test_user_preferences_defaults():
 
 
 def test_user_preferences_is_frozen():
-    from state.models import UserPreferences
     prefs = UserPreferences(hotel_grade="5성")
     with pytest.raises(FrozenInstanceError):
         prefs.hotel_grade = "3성"  # type: ignore
 
 
 def test_travel_state_has_user_preferences():
-    from state.models import UserPreferences
     state = TravelState()
     assert hasattr(state, "user_preferences")
     assert isinstance(state.user_preferences, UserPreferences)
