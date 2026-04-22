@@ -1,6 +1,10 @@
-# 여행 AG-UI 채팅 — A2A + AG-UI 프로토콜
+# 여행 AG-UI 채팅 — A2A + AG-UI + Domain Plugin Runtime
 
 React + Vite 프론트엔드와 Google ADK 에이전트를 **A2A → AG-UI** 이중 프로토콜로 연결하는 여행 상담 채팅 웹입니다.
+
+현재 백엔드는 **공통 채팅 엔진 + 도메인 플러그인** 구조로 분리되어 있습니다.
+
+---
 
 ## 주요 기능
 
@@ -8,85 +12,115 @@ React + Vite 프론트엔드와 Google ADK 에이전트를 **A2A → AG-UI** 이
 - **호텔 상세 조회**: 호텔 카드 클릭 시 객실 정보, 편의시설, 위치 등 상세 정보 표시
 - **항공편 검색**: 출발지, 목적지, 날짜, 인원수로 왕복 항공편 검색
 - **여행 정보**: 목적지별 여행 팁 및 관광 정보 제공
-- **사용자 취향 수집**: 호텔/항공편 추천 전 슬라이드업 패널로 취향 수집 (등급, 편의시설, 좌석 등)
-- **사용자 입력 폼**: 정보가 부족할 때 대화형 폼으로 필요한 정보 수집 (기존 날짜·인원 자동 pre-fill)
-- **여행 컨텍스트 재사용**: 호텔 조회 후 항공편 문의 시(또는 반대) 기존 날짜·인원을 자동으로 폼에 적용
-- **핵심 상태 보호**: 목적지·날짜·인원 등 핵심 여행 정보는 호텔 상세 조회 등 부분 업데이트에 의해 초기화되지 않음
-- **증분 상태 동기화**: tool call로 바뀌는 에이전트 상태는 `STATE_DELTA`(RFC 6902 JSON Patch)로 전달되고, 도구 결과/입력 요청은 `STATE_SNAPSHOT` 또는 커스텀 이벤트로 유지
-- **실시간 스트리밍**: SSE를 통한 에이전트 응답 실시간 렌더링
-- **툴 실행 표시**: 호텔/항공편 검색 진행 상태 실시간 표시
-- **스트림 인터럽트**: 응답 중에도 호텔 클릭 시 현재 스트림을 중단하고 즉시 새 요청 전송
-- **State Flow 패널**: 핵심 여행 정보(고정) → 클라이언트 상태 → 에이전트 상태 순으로 한눈에 확인
+- **사용자 취향 수집**: 호텔/항공편 추천 전 슬라이드업 패널로 취향 수집
+- **사용자 입력 폼**: 정보가 부족할 때 대화형 폼으로 필요한 정보 수집
+- **여행 컨텍스트 재사용**: 호텔↔항공편 전환 시 기존 일정/인원 자동 재사용
+- **증분 상태 동기화**: `STATE_DELTA`(JSON Patch) + `STATE_SNAPSHOT` 병행
+- **도메인 플러그인 구조**: travel 구현을 plugin으로 분리, fake plugin으로 스왑 가능성 검증
 
 ---
 
 ## 아키텍처
 
-```
-React (Vite :5173)
-    │  POST /agui/run  (RunAgentInput)
-    │  ◄── SSE stream  (AG-UI Events)
-    ▼
-AG-UI Gateway  (FastAPI :8000)  ← main.py
-    │  A2AClient.send_message_streaming()
-    │  ◄── SSE stream  (A2A Events)
-    ▼
-A2A Agent Server  (Starlette :8001)  ← a2a_server.py
-    │  ADKAgentExecutor.execute()
-    ▼
-ADK Runner → Gemini LLM + FunctionTools
-    search_hotels / search_flights / get_travel_tips
-    get_hotel_detail / request_user_input
+```mermaid
+flowchart TD
+    A[React Client :5173] -->|POST /agui/run| B[AG-UI Gateway<br/>backend/main.py]
+    B --> C[Domain Runtime<br/>backend/domain_runtime.py]
+    C --> D[Active Domain Plugin<br/>backend/domains/<domain>/...]
+    B --> E[A2A Client]
+    E --> F[A2A Server<br/>backend/a2a_server.py]
+    F --> G[Executor<br/>backend/executor.py]
+    G --> D
+    G --> H[Converter<br/>backend/converter.py]
+    H --> B
+    B -->|SSE| A
 ```
 
 ### 레이어별 역할
 
 | 레이어 | 파일 | 역할 |
 |---|---|---|
-| **React Client** | `frontend/src/` | AG-UI SSE 수신 → `STATE_DELTA` / `STATE_SNAPSHOT` 적용 → 실시간 UI 렌더링, 누적 `travel_context` / `user_preferences` 전송 |
-| **AG-UI Gateway** | `backend/main.py`, `backend/converter.py` | RunAgentInput 수신 → client_state 내부 동기화 → A2A 요청 → `STATE_DELTA` / `STATE_SNAPSHOT` / 커스텀 이벤트 변환 |
-| **A2A Server** | `backend/a2a_server.py`, `backend/executor.py` | ADK 에이전트를 A2A 프로토콜로 노출, tool-call 상태를 `STATE_DELTA` DataPart로 래핑 |
-| **ADK Agent** | `backend/agent.py` | LlmAgent + FunctionTool 정의, 여행 컨텍스트 재사용 프롬프트 |
+| **React Client** | `frontend/src/` | AG-UI SSE 수신 → UI 렌더링 |
+| **AG-UI Gateway** | `backend/main.py` | 요청 수신, runtime으로 request 준비, A2A 호출 |
+| **Domain Runtime** | `backend/domain_runtime.py` | active plugin 로딩, state 저장/복원, request 준비, runtime emission 매핑 |
+| **A2A Server** | `backend/a2a_server.py` | runtime에서 agent/card를 가져와 A2A 서버 구성 |
+| **Executor** | `backend/executor.py` | ADK 실행, typed runtime emission 처리 |
+| **Converter** | `backend/converter.py` | A2A 이벤트 → AG-UI 이벤트 변환 |
+| **Domain Plugin** | `backend/domains/travel/*` | 도메인 state 의미, context, tools, data, prompt |
+
+---
+
+## 공통 엔진 vs 도메인 구현
+
+### 공통 엔진
+
+- `backend/main.py`
+- `backend/a2a_server.py`
+- `backend/executor.py`
+- `backend/converter.py`
+- `backend/domain_runtime.py`
+- `backend/state/store.py`
+
+이 레이어는 **여행이라는 도메인을 직접 이해하지 않습니다.**
+
+### 현재 travel 도메인 구현
+
+- `backend/domains/travel/plugin.py`
+- `backend/domains/travel/agent.py`
+- `backend/domains/travel/state.py`
+- `backend/domains/travel/context.py`
+- `backend/domains/travel/data/*`
+- `backend/domains/travel/tools/*`
+
+### 스왑 검증용 fake 도메인
+
+- `backend/domains/fake/plugin.py`
+
+fake plugin으로 `/agui/run` 스모크 테스트를 통과시켜,
+공통 엔진이 travel에 종속되지 않는다는 점을 검증했습니다.
 
 ---
 
 ## 프로젝트 구조
 
-```
+```text
 travel-agui/
-├── start.py              # 서버 일괄 시작 스크립트 (macOS/Windows 공통)
+├── start.py
 ├── README.md
-├── AGENT.md              # 에이전트 개발 가이드
-├── logs/                 # 서버 로그 파일 (gitignore)
+├── AGENT.md
+├── COMMUNICATION_FLOW.md
+├── docs/
+│   ├── domain_separate.md
+│   └── superpowers/
+│       ├── specs/
+│       └── plans/
 ├── backend/
-│   ├── agent.py          # ADK LlmAgent + FunctionTool 정의
-│   ├── a2a_server.py     # A2A 에이전트 서버 (포트 8001)
-│   ├── tools/            # 호텔/항공편/입력/취향/팁 FunctionTool 구현
-│   ├── main.py           # AG-UI 게이트웨이 (포트 8000)
-│   ├── state/            # 여행 상태 통합 관리 (StateManager + Models)
-│   │   ├── __init__.py
-│   │   ├── models.py     # frozen dataclass (TravelState, TravelContext, UIContext, AgentStatus, UserPreferences)
-│   │   └── manager.py    # StateManager (thread_id 기준 state 통합 관리, STATE_DELTA / STATE_SNAPSHOT 생성)
-│   ├── tests/            # 백엔드 Pytest 테스트 스위트
-│   │   ├── state/
-│   │   │   ├── test_models.py
-│   │   │   └── test_manager.py
-│   │   └── state-panel-sidebar/
-│   │       ├── test_context_extraction.py
-│   │       ├── test_snapshot_emission.py
-│   │       └── test_main_state_handling.py
-│   ├── pyproject.toml    # uv 프로젝트 설정 및 의존성
-│   └── .env.example      # 환경 변수 템플릿
+│   ├── main.py
+│   ├── a2a_server.py
+│   ├── executor.py
+│   ├── converter.py
+│   ├── domain_runtime.py
+│   ├── domains/
+│   │   ├── base.py
+│   │   ├── fake/
+│   │   └── travel/
+│   │       ├── plugin.py
+│   │       ├── agent.py
+│   │       ├── state.py
+│   │       ├── context.py
+│   │       ├── state_manager.py
+│   │       ├── data/
+│   │       └── tools/
+│   ├── state/
+│   │   ├── store.py
+│   │   ├── models.py          # compatibility wrapper
+│   │   ├── context_builder.py # compatibility wrapper
+│   │   └── manager.py         # compatibility wrapper
+│   ├── data/                  # compatibility wrappers
+│   ├── tools/                 # compatibility wrappers
+│   └── tests/
 ├── frontend/
-│   ├── src/              # 프론트엔드 소스 코드 (useAGUIChat/useAgentState가 STATE_DELTA 적용)
-│   ├── tests/            # Playwright Test 기반 E2E 스위트 (이동됨)
-│   │   ├── e2e/          # 서비스별 E2E 시나리오
-│   │   └── README.md
-│   ├── vite.config.ts    # /agui → :8000 프록시
-│   └── package.json
-└── openspec/             # OpenSpec 변경 관리 및 스키마
-    ├── changes/          # 변경 이력 관리
-    └── schemas/          # spec-driven-with-tests 커스텀 스키마
+└── openspec/
 ```
 
 ---
@@ -98,508 +132,165 @@ travel-agui/
 | 항목 | 버전 | 설치 |
 |---|---|---|
 | Python | 3.11+ | [python.org](https://www.python.org) |
-| uv | 최신 | 아래 참고 |
+| uv | 최신 | [astral.sh/uv](https://astral.sh/uv) |
 | Node.js | 18+ | [nodejs.org](https://nodejs.org) |
-| Google Gemini API Key | — | [aistudio.google.com](https://aistudio.google.com) |
-
-#### uv 설치
-
-**macOS / Linux**
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-**Windows (PowerShell)**
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
+| Google Gemini API Key | - | [aistudio.google.com](https://aistudio.google.com) |
 
 ---
 
-### 빠른 시작 (권장)
-
-#### macOS / Linux
+### 빠른 시작
 
 ```bash
-# 1. 환경 변수 설정 (최초 1회)
+# 1. 환경 변수 설정
 cp backend/.env.example backend/.env
-# backend/.env 파일에 GOOGLE_API_KEY 입력
 
-# 2. 백엔드 의존성 설치 (최초 1회)
+# 2. backend/.env에 GOOGLE_API_KEY 입력
+# DOMAIN_PLUGIN은 생략 가능하며 기본값은 travel
+
+# 3. 백엔드 의존성 설치
 cd backend && uv sync && cd ..
 
-# 3. 프론트엔드 패키지 설치 (최초 1회)
+# 4. 프론트 의존성 설치
 cd frontend && npm install && cd ..
 
-# 4. 서버 시작
+# 5. 서버 시작
 python start.py
 ```
 
-#### Windows
+기본 도메인:
 
-```powershell
-# 1. 환경 변수 설정 (최초 1회)
-copy backend\.env.example backend\.env
-# backend\.env 파일에 GOOGLE_API_KEY 입력
-
-# 2. 백엔드 의존성 설치 (최초 1회)
-cd backend; uv sync; cd ..
-
-# 3. 프론트엔드 패키지 설치 (최초 1회)
-cd frontend; npm install; cd ..
-
-# 4. 서버 시작
-python start.py
+```bash
+DOMAIN_PLUGIN=travel
 ```
 
-**서버 주소:**
-- A2A 에이전트 서버: http://localhost:8001
-- AG-UI 게이트웨이: http://localhost:8000
-- 프론트엔드 UI: http://localhost:5173
+runtime loader는 아래 두 형태를 모두 지원합니다.
 
-**종료:** `Ctrl+C`
-
-**start.py 자동 처리 항목:**
-- 기존 프로세스 자동 종료 (포트 충돌 방지)
-- `uv sync`로 의존성 최신화
-- 백엔드 A2A 서버 시작 및 헬스체크
-- 프론트엔드 개발 서버 시작 및 헬스체크
-- 실시간 로그 출력 (`logs/` 디렉토리)
-- Ctrl+C로 모든 서버 graceful shutdown
+```bash
+DOMAIN_PLUGIN=travel
+DOMAIN_PLUGIN=domains.travel.plugin:get_plugin
+```
 
 ---
 
-### 수동 실행 (개발 시 디버깅용)
-
-터미널 3개를 사용하여 개별 실행합니다.
+## 수동 실행
 
 ```bash
-# 터미널 1 — A2A 에이전트 서버 (포트 8001)
+# 터미널 1 — A2A 서버
 cd backend
 uv run python a2a_server.py
 
-# 터미널 2 — AG-UI 게이트웨이 (포트 8000)
+# 터미널 2 — AG-UI Gateway
 cd backend
 uv run python main.py
 
-# 터미널 3 — 프론트엔드 개발 서버 (포트 5173)
+# 터미널 3 — 프론트엔드
 cd frontend
 npm run dev
 ```
 
----
+서버 주소:
 
-### 테스트 질문 예시
-
-- `도쿄 호텔 추천해줘 (6월 10일~14일, 2명)` → 호텔 목록 카드 표시, 클릭 시 상세 정보 조회
-- `서울에서 오사카 항공편 검색해줘 (7월 1일, 2명)`
-- `방콕 여행 정보 알려줘`
-- `서울 호텔 알려줘` → 날짜/인원 입력 폼 자동 표시
+- A2A 서버: http://localhost:8001
+- AG-UI Gateway: http://localhost:8000
+- 프론트엔드 UI: http://localhost:5173
 
 ---
 
-## 이벤트 흐름 상세
+## 테스트
 
-### AG-UI 이벤트 (Client ↔ Gateway)
-
-```
-Client → POST /agui/run
-  { threadId, runId, messages: [{role:"user", content:"..."}], ... }
-
-Gateway → SSE stream:
-  data: {"type":"RUN_STARTED", ...}
-  data: {"type":"STEP_STARTED", "stepName":"에이전트 처리 중"}
-  data: {"type":"TEXT_MESSAGE_START", "messageId":"...", "role":"assistant"}
-  data: {"type":"TEXT_MESSAGE_CHUNK", "messageId":"...", "delta":"호텔을 검색합니다..."}
-  data: {"type":"TOOL_CALL_START", "toolCallId":"...", "toolCallName":"search_hotels"}
-  data: {"type":"TOOL_CALL_ARGS",  "toolCallId":"...", "delta":"{\"city\":\"도쿄\",...}"}
-  data: {"type":"STATE_DELTA",    "delta":[{"op":"replace","path":"/agent_status/current_intent","value":"searching"}, ...]}
-  data: {"type":"TOOL_CALL_END",   "toolCallId":"..."}
-  data: {"type":"STATE_SNAPSHOT",  "snapshot":{"tool":"search_hotels","result":{...}}}
-  data: {"type":"USER_FAVORITE_REQUEST", "requestId":"...", "favoriteType":"hotel_preference", "options":{...}}
-  data: {"type":"USER_INPUT_REQUEST", "requestId":"...", "inputType":"hotel_booking_details", "fields":[...]}
-  data: {"type":"TEXT_MESSAGE_END", "messageId":"..."}
-  data: {"type":"STEP_FINISHED", ...}
-  data: {"type":"RUN_FINISHED", ...}
-```
-
-### A2A 이벤트 인코딩 (a2a_server → main.py)
-
-ADK 이벤트를 A2A `TaskArtifactUpdateEvent` 의 파트로 인코딩해 전달합니다.
-
-| ADK 이벤트 | A2A Part 타입 | 인코딩 구조 |
-|---|---|---|
-| `text` (스트리밍) | `TextPart` | `{ text: "..." }` |
-| `function_call` | `DataPart` | `{ "_agui_event": "TOOL_CALL_START", "id": "...", "name": "search_hotels", "args": {...} }` |
-| `function_response` (종료 신호) | `DataPart` | `{ "_agui_event": "TOOL_CALL_END", "id": "..." }` |
-| `function_response` (결과) | `DataPart` | `{ "tool": "search_hotels", "result": {...} }` |
-| `request_user_input` | `DataPart` | `{ "_agui_event": "USER_INPUT_REQUEST", "requestId": "...", "inputType": "...", "fields": [...] }` |
-| `request_user_favorite` | `DataPart` | `{ "_agui_event": "USER_FAVORITE_REQUEST", "requestId": "...", "favoriteType": "...", "options": {...} }` |
-| `function_call` (state mutation) | `DataPart` | `{ "_agui_event": "STATE_DELTA", "delta": [...] }` |
-
-#### main.py 변환 규칙
-
-```
-TextPart          → TEXT_MESSAGE_START / CHUNK / END
-DataPart._agui_event == "TOOL_CALL_START"      → TOOL_CALL_START + TOOL_CALL_ARGS
-DataPart._agui_event == "TOOL_CALL_END"        → TOOL_CALL_END
-DataPart._agui_event == "STATE_DELTA"          → STATE_DELTA (JSON Patch 그대로 전달)
-DataPart._agui_event == "USER_FAVORITE_REQUEST" → USER_FAVORITE_REQUEST (취향 패널 렌더링)
-DataPart._agui_event == "USER_INPUT_REQUEST"   → USER_INPUT_REQUEST (폼 렌더링)
-DataPart (나머지)  → STATE_SNAPSHOT  (`tool_result` 등 프론트 ToolResultCard 렌더링)
-TaskStatusUpdateEvent (working)    → STEP_STARTED
-TaskStatusUpdateEvent (completed)  → STEP_FINISHED
-```
-
----
-
-## 핵심 구현 포인트
-
-### ADKAgentExecutor (a2a_server.py)
-
-`google.adk.a2a.executor.ADKAgentExecutor`가 설치된 버전에 없으므로 `a2a.server.agent_execution.AgentExecutor`를 직접 상속해 구현합니다.
-
-```python
-class ADKAgentExecutor(AgentExecutor):
-    async def execute(self, context: RequestContext, event_queue: EventQueue):
-        # ADK runner.run_async() 실행
-        # → function_call  → DataPart(_agui_event=TOOL_CALL_START)
-        # → text           → TextPart
-        # → function_resp  → DataPart(_agui_event=TOOL_CALL_END) + DataPart(tool result)
-        # → completed      → TaskStatusUpdateEvent(state=completed)
-```
-
-### A2AStarletteApplication 빌드
-
-```python
-a2a_app = A2AStarletteApplication(
-    agent_card=agent_card,
-    http_handler=DefaultRequestHandler(
-        agent_executor=executor,
-        task_store=InMemoryTaskStore(),   # 필수
-    ),
-)
-app = a2a_app.build()  # .build() 호출로 실제 Starlette ASGI 앱 생성
-```
-
-### AgentCard 필수 필드
-
-```python
-AgentCard(
-    name="...",
-    description="...",
-    url="http://localhost:8001/",
-    version="1.0.0",                       # 필수
-    default_input_modes=["text/plain"],    # 필수
-    default_output_modes=["text/plain"],   # 필수
-    capabilities=AgentCapabilities(streaming=True),
-    skills=[AgentSkill(id="..", name="..", description="..", tags=[..])],
-)
-```
-
-### A2AClient 초기화
-
-```python
-# httpx_client 키워드 사용 (http_client 아님)
-a2a_client = A2AClient(httpx_client=http_client, agent_card=agent_card)
-
-# 스트리밍은 SendStreamingMessageRequest 사용
-request = SendStreamingMessageRequest(id=..., params=MessageSendParams(...))
-async for response in a2a_client.send_message_streaming(request):
-    result = response.root.result  # Task | Message | TaskStatusUpdateEvent | TaskArtifactUpdateEvent
-```
-
-### 메시지 id 자동 부여 (main.py)
-
-AG-UI `BaseMessage`는 `id` 필드가 필수입니다. 클라이언트가 id 없이 보낼 경우 서버에서 자동 부여합니다.
-
-```python
-for msg in body["messages"]:
-    if isinstance(msg, dict) and "id" not in msg:
-        msg["id"] = str(uuid.uuid4())
-```
-
-### 양방향 상태 동기화 (`travel_context` + `user_preferences`)
-
-프론트엔드는 매 요청마다 누적된 `agentState.travel_context`, `user_preferences`, `ui_context`를 서버로 전송합니다. 서버는 이를 내부 `StateManager`에 반영하고, `travel_context`를 사용자 메시지 앞 컨텍스트 블록으로 주입합니다.
-
-```
-[현재 여행 컨텍스트 - 이미 확인된 정보]
-- 목적지: 도쿄
-- 체크인/출발일: 2026-06-10
-- 체크아웃/귀국일: 2026-06-14
-- 인원: 2명
-
-사용자 요청: 항공편도 알려줘
-```
-
-에이전트는 이 컨텍스트를 읽고 날짜·인원을 재사용해 `search_flights` 또는 `request_user_input` 에 자동 반영합니다.
-
-**클라이언트→서버 state 반영은 내부 동기화 전용**: 현재 `apply_client_state()`는 backend store를 갱신하지만 그 delta를 SSE로 재방출하지는 않습니다.
-
-**서버→클라이언트 증분 업데이트**: 도구 호출로 인한 `TravelState` 변화는 `STATE_DELTA`로 전달되고, 프론트는 `useAgentState.applyAgentStateDelta()`에서 JSON Patch를 적용합니다.
-
-**스냅샷 하위 호환**: `STATE_SNAPSHOT(snapshot_type="agent_state")`도 여전히 프론트에서 처리하며, `destination`, `check_in`, `check_out`, `nights`, `guests`, `origin`, `trip_type` 등 핵심 여행 정보는 null로 덮어쓰지 않습니다.
-
-서버 측 state 관리는 `StateManager`가 담당하며, `thread_id` 기준으로 `TravelState`(TravelContext + UIContext + AgentStatus + UserPreferences)를 통합 관리합니다.
-
----
-
-### 호텔 클릭 → 상세 조회 흐름 (interruptAndSend)
-
-응답 스트리밍 중에도 호텔 카드를 클릭하면 현재 스트림을 중단하고 즉시 상세 조회 요청을 전송합니다.
-
-```typescript
-// useAGUIChat.ts
-const interruptAndSend = useCallback((userText: string) => {
-  abortRef.current?.abort()       // 기존 SSE 스트림 중단
-  isRunningRef.current = false    // ref 즉시 동기 업데이트
-  setIsRunning(false)
-  setTimeout(() => sendMessage(userText), 0)  // 다음 틱에 새 메시지 전송
-}, [sendMessage])
-
-// App.tsx
-const handleHotelClick = (hotelCode: string, hotelName: string) => {
-  interruptAndSend(`${hotelName}(${hotelCode}) 호텔의 상세 정보를 알려줘`)
-}
-```
-
-> **isRunningRef**: `useState`의 `isRunning`은 비동기로 업데이트되어 stale closure 문제가 발생할 수 있습니다. `useRef`로 동기 상태를 별도 관리하여 해결합니다.
-
----
-
-## 환경 요구사항
-
-- Python 3.11+
-- uv (패키지 매니저)
-- Node.js 18+
-- Google Gemini API Key
-
-## 의존성 (backend/pyproject.toml)
-
-```toml
-dependencies = [
-    "google-adk>=1.0.0",
-    "a2a-sdk>=0.2.0",
-    "ag-ui-protocol>=0.1.14",
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.30.0",
-    "python-dotenv>=1.0.0",
-    "pydantic>=2.0.0",
-    "httpx>=0.27.0",
-]
-```
-
-의존성 추가 시:
-```bash
-cd backend
-uv add <패키지명>
-```
-
----
-
-## 테스트 실행
-
-### 1. 백엔드 유닛/통합 테스트 (Pytest)
+### 백엔드 전체 테스트
 
 ```bash
 cd backend
 uv run pytest
 ```
 
-### 2. 프론트엔드 E2E 테스트 (Playwright)
-
-현재 E2E 테스트는 `frontend/` 디렉토리 내에서 실행됩니다.
+### 도메인 스왑 검증
 
 ```bash
-# 서버가 실행 중이어야 함 (python start.py)
+cd backend
+DOMAIN_PLUGIN=travel uv run pytest -q
+DOMAIN_PLUGIN=fake uv run pytest tests/test_domain_runtime.py tests/test_fake_plugin_smoke.py -v
+```
+
+### 프론트엔드 검증
+
+```bash
 cd frontend
-
-# 전체 E2E 실행
+npm run build
 npm test
-
-# 프론트 빌드 검증
-npm run build
-
-# 브라우저를 보면서 실행
-npm run test:e2e:headed
-
-# Playwright UI 모드
-npm run test:ui
 ```
 
-### 주요 테스트 시나리오 (frontend/tests/e2e/)
+---
 
-| 테스트 파일 | 목적 |
-|---|---|
-| `frontend/tests/e2e/full-flow.spec.ts` | 호텔 + 항공편 검색 전체 플로우 |
-| `frontend/tests/e2e/hotel-direct-search.spec.ts` | 모든 정보가 포함된 호텔 직접 검색 |
-| `frontend/tests/e2e/hotel-detail-click.spec.ts` | 호텔 카드 클릭 → 상세 정보 조회 |
-| `frontend/tests/e2e/default-values.spec.ts` | 호텔 폼 기본값 자동 설정 확인 |
-| `frontend/tests/e2e/natural-language.spec.ts` | 폼 제출 시 자연어 메시지 변환 |
-| `frontend/tests/e2e/flight-form.spec.ts` | 항공편 폼 기본값 및 자동 입력 |
-| `frontend/tests/e2e/form-submit.spec.ts` | 호텔 폼 제출 후 결과 표시 |
-| `frontend/tests/e2e/form-values.spec.ts` | 호텔 폼 입력값과 제출 상태 확인 |
-| `frontend/tests/e2e/assistant-response-check.spec.ts` | 툴 호출/폼 렌더링 응답 검증 |
-| `frontend/tests/e2e/response-capture.spec.ts` | `/agui/run` SSE 응답 캡처 검증 |
-| `frontend/tests/e2e/state-panel-sidebar/state-panel-updates.spec.ts` | StatePanel 클라이언트/서버 업데이트 및 `STATE_DELTA` 반영 검증 |
+## 이벤트 흐름 핵심
 
-### 최근 `STATE_DELTA` 검증 명령
+1. Frontend가 `/agui/run` 호출
+2. `main.py`가 runtime으로 request 준비 (`prepare_request`)
+3. A2A 서버가 runtime에서 active plugin의 `build_agent()` / `agent_card()` 사용
+4. `executor.py`가 plugin의 `apply_tool_call()` / `apply_tool_result()` 호출
+5. runtime이 typed emission을 현재 stream payload로 매핑
+6. `converter.py`가 AG-UI 이벤트로 변환
+7. Frontend가 `STATE_DELTA`, `STATE_SNAPSHOT`, `USER_INPUT_REQUEST`, `USER_FAVORITE_REQUEST` 처리
 
-```bash
-cd backend
-uv run pytest
+자세한 설명은 `COMMUNICATION_FLOW.md` 참고.
 
-cd ../frontend
-npm run build
-npm test -- tests/e2e/response-capture.spec.ts
-npx playwright test tests/e2e/state-panel-sidebar/state-panel-updates.spec.ts -g "STATE_DELTA"
-```
+---
 
-### 아티팩트
+## 문서
 
-- 실패 시 Playwright 스크린샷/비디오/trace가 자동 저장됩니다.
-- HTML 리포트는 `playwright-report/`에 생성됩니다.
+- `AGENT.md` — 개발자용 구조/규칙 요약
+- `COMMUNICATION_FLOW.md` — 현재 통신 흐름 상세
+- `docs/domain_separate.md` — 공통 엔진 vs 도메인 플러그인 분리 설명
+- `docs/superpowers/specs/2026-04-21-domain-plugin-boundary-design.md` — 설계 스펙
+- `docs/superpowers/plans/2026-04-21-domain-plugin-boundary.md` — 구현 계획
 
 ---
 
 ## 트러블슈팅
 
+### `DOMAIN_PLUGIN is not configured`
+
+현재 runtime loader는 `DOMAIN_PLUGIN` 이 없으면 기본적으로 `travel` 을 사용합니다.
+
+그래도 문제가 생기면 명시적으로 아래처럼 지정하세요.
+
+```bash
+export DOMAIN_PLUGIN=travel
+```
+
+또는
+
+```bash
+export DOMAIN_PLUGIN=domains.travel.plugin:get_plugin
+```
+
+### 서버 시작 실패
+
+```bash
+cd backend
+uv run python a2a_server.py
+uv run python main.py
+```
+
 ### 포트 충돌
 
-**문제**: `Address already in use` 에러 발생
-
-**macOS / Linux**
 ```bash
 lsof -ti :8001 | xargs kill -9
 lsof -ti :8000 | xargs kill -9
 lsof -ti :5173 | xargs kill -9
 ```
 
-**Windows (PowerShell)**
-```powershell
-netstat -ano | findstr :8001
-netstat -ano | findstr :8000
-netstat -ano | findstr :5173
-# PID로 프로세스 종료 (예: PID 1234)
-taskkill /F /PID 1234
-```
-
 ---
 
-### 서버 시작 실패
+## 요약
 
-**문제**: 백엔드 또는 프론트엔드 서버가 시작되지 않음
+이 프로젝트는 이제
 
-```bash
-# 로그 확인
-cat logs/backend.log
-cat logs/gateway.log
-cat logs/frontend.log
+- **공통 채팅 엔진**
+- **도메인 플러그인**
 
-# 수동 실행으로 에러 확인
-cd backend && uv run python a2a_server.py
-```
+으로 나뉘어 있습니다.
 
----
-
-### uv 명령어를 찾을 수 없음
-
-**문제**: `uv: command not found` 또는 `'uv'은(는) 내부 또는 외부 명령...`
-
-**macOS / Linux**
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-source ~/.bashrc  # 또는 source ~/.zshrc
-```
-
-**Windows (PowerShell)**
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-# PowerShell 재시작 후 사용 가능
-```
-
----
-
-### 환경 변수 누락
-
-**문제**: `GOOGLE_API_KEY not found` 에러
-
-```bash
-# macOS / Linux
-cp backend/.env.example backend/.env
-
-# Windows
-copy backend\.env.example backend\.env
-notepad backend\.env
-```
-
----
-
-### LLM 응답 없음 또는 타임아웃
-
-**확인 사항**:
-1. A2A 서버와 AG-UI 게이트웨이가 모두 실행 중인지 확인
-2. `logs/backend.log`에서 Gemini API 호출 에러 확인
-3. API 키 유효성 확인
-4. 네트워크 연결 확인
-
----
-
-### 테스트 실패
-
-**문제**: E2E 테스트가 실패하거나 타임아웃
-
-```bash
-# 서버 상태 확인
-curl http://localhost:8001/.well-known/agent-card.json
-curl http://localhost:5173
-
-# 서버 재시작
-python start.py
-npm test
-```
-
----
-
-## 개발 가이드
-
-### 에이전트 수정
-
-에이전트의 동작을 수정하려면 `backend/agent.py`를 편집하세요. 자세한 내용은 **AGENT.md**를 참조하세요.
-
-### 새로운 FunctionTool 추가
-
-1. `backend/agent.py`에 새 함수 정의 (각 호텔/결과에 고유 코드 포함 권장)
-2. `FunctionTool`로 래핑하여 `tools` 리스트에 추가
-3. LlmAgent `instruction`에 사용법 추가
-4. 프론트엔드에서 결과 렌더링 (필요 시 `ToolResultCard.tsx` 수정)
-
-### AG-UI 이벤트 커스터마이징
-
-프론트엔드에서 새로운 이벤트 타입을 처리하려면:
-1. `frontend/src/types/index.ts`에 타입 정의 추가
-2. `frontend/src/hooks/useAGUIChat.ts`에서 이벤트 처리 로직 추가
-3. 필요한 컴포넌트 생성 또는 수정
-
-### 호텔 데이터 확장
-
-`backend/agent.py`의 `hotel_db` 딕셔너리에 도시와 호텔을 추가합니다. 각 호텔에는 반드시 `hotel_code` 필드(형식: `HTL-XXX-000`)를 포함해야 상세 조회 기능이 동작합니다.
-
-```python
-hotel_db = {
-    "새도시": [
-        {"hotel_code": "HTL-NEW-001", "name": "호텔명", "area": "지역", ...},
-    ]
-}
-```
-
----
-
-## 라이선스
-
-MIT
-
-## 문의
-
-문제가 발생하거나 질문이 있으면 이슈를 등록해주세요.
+즉, 앞으로 새 도메인을 붙일 때는 공통 채팅 흐름을 다시 만들지 않고,
+`backend/domains/<domain>/...` 쪽만 구현하면 됩니다.
