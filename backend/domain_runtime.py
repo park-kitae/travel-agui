@@ -99,6 +99,11 @@ def _load_plugin_from_env() -> DomainPlugin:
         raise RuntimeError("DOMAIN_PLUGIN is not configured")
 
     module_name, separator, attr_name = plugin_spec.partition(":")
+    if "." not in module_name and not separator:
+        module_name = f"domains.{module_name}.plugin"
+        attr_name = "get_plugin"
+        separator = ":"
+
     module = importlib.import_module(module_name)
     target: Any = getattr(module, attr_name) if separator else module
 

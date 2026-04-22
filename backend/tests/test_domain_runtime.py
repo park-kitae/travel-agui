@@ -155,6 +155,15 @@ def test_initialize_runtime_or_die_loads_plugin_once_and_returns_shared_singleto
     assert load_calls["count"] == 1
 
 
+def test_initialize_runtime_or_die_supports_short_domain_plugin_name(monkeypatch: pytest.MonkeyPatch):
+    reset_runtime_for_tests()
+    monkeypatch.setenv("DOMAIN_PLUGIN", "travel")
+
+    runtime = initialize_runtime_or_die()
+
+    assert runtime.plugin.__class__.__name__ == "TravelDomainPlugin"
+
+
 def test_initialize_runtime_or_die_raises_on_plugin_load_failure(monkeypatch: pytest.MonkeyPatch):
     reset_runtime_for_tests()
     monkeypatch.setenv("DOMAIN_PLUGIN", "missing_plugin_module:load_plugin")
