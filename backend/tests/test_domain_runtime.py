@@ -164,6 +164,15 @@ def test_initialize_runtime_or_die_supports_short_domain_plugin_name(monkeypatch
     assert runtime.plugin.__class__.__name__ == "TravelDomainPlugin"
 
 
+def test_initialize_runtime_or_die_defaults_to_travel_when_env_missing(monkeypatch: pytest.MonkeyPatch):
+    reset_runtime_for_tests()
+    monkeypatch.delenv("DOMAIN_PLUGIN", raising=False)
+
+    runtime = initialize_runtime_or_die()
+
+    assert runtime.plugin.__class__.__name__ == "TravelDomainPlugin"
+
+
 def test_initialize_runtime_or_die_raises_on_plugin_load_failure(monkeypatch: pytest.MonkeyPatch):
     reset_runtime_for_tests()
     monkeypatch.setenv("DOMAIN_PLUGIN", "missing_plugin_module:load_plugin")

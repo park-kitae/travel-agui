@@ -94,9 +94,7 @@ def map_runtime_emission_to_payload(emission: RuntimeEmission | Any) -> dict[str
 
 
 def _load_plugin_from_env() -> DomainPlugin:
-    plugin_spec = os.getenv("DOMAIN_PLUGIN")
-    if not plugin_spec:
-        raise RuntimeError("DOMAIN_PLUGIN is not configured")
+    plugin_spec = os.getenv("DOMAIN_PLUGIN") or "travel"
 
     module_name, separator, attr_name = plugin_spec.partition(":")
     if "." not in module_name and not separator:
