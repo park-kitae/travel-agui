@@ -1,7 +1,7 @@
-import pytest
-from dataclasses import replace
+import pytest  # type: ignore[reportMissingImports]
 
-from state import ContextBuilder, TravelState, TravelContext, UIContext, UserPreferences
+from domains.travel.context import ContextBuilder
+from domains.travel.state import TravelContext, TravelState, UIContext, UserPreferences
 
 
 class TestContextBuilderEmptyState:
@@ -293,6 +293,23 @@ class TestContextBuilderCombined:
         user_idx = next((i for i, line in enumerate(lines) if "사용자 요청:" in line), -1)
 
         assert travel_idx < pref_idx < user_idx, "섹션 순서가 잘못되었습니다"
+
+    def test_build_context_block_formats_sections_without_syntax_issues(self):
+        state = TravelState(
+            travel_context=TravelContext(destination="도쿄"),
+            user_preferences=UserPreferences(hotel_grade="4성"),
+        )
+        builder = ContextBuilder(state)
+
+        result = builder.build_context_block("호텔 추천")
+
+        assert result == (
+            "[현재 여행 컨텍스트 - 이미 확인된 정보]\n"
+            "- 목적지: 도쿄\n\n"
+            "[사용자 취향 - 이미 수집 완료]\n"
+            "- 호텔 취향: 등급: 4성 [호텔 취향 수집 완료]\n\n"
+            "사용자 요청: 호텔 추천"
+        )
 
 
 class TestContextBuilderEdgeCases:
