@@ -1,57 +1,12 @@
-"""
-state/models.py — 여행 state 데이터 모델 (frozen dataclass)
-"""
-from dataclasses import dataclass, field
+"""Backward-compatible state model re-exports."""
+
+from domains.travel.state import AgentStatus, TravelContext, TravelState, UIContext, UserPreferences
 
 
-@dataclass(frozen=True)
-class TravelContext:
-    """여행 검색 파라미터 (목적지, 날짜, 인원 등)."""
-    destination: str | None = None
-    origin: str | None = None
-    check_in: str | None = None
-    check_out: str | None = None
-    nights: int | None = None
-    guests: int | None = None
-    rooms: int | None = None          # 객실 수 (인원수와 별개)
-    trip_type: str | None = None      # "round_trip" | "one_way"
-    budget_range: str | None = None   # "저예산" | "중간" | "고급"
-    travel_purpose: str | None = None # "leisure" | "business" | "honeymoon" | "family"
-
-
-@dataclass(frozen=True)
-class UIContext:
-    """UI에서 선택된 값 (호텔 코드, 항공편 ID 등)."""
-    selected_hotel_code: str | None = None
-    selected_flight_id: str | None = None
-
-
-@dataclass(frozen=True)
-class AgentStatus:
-    """에이전트 처리 상태."""
-    current_intent: str = "idle"
-    missing_fields: tuple[str, ...] = ()
-    active_tool: str | None = None
-
-
-@dataclass(frozen=True)
-class UserPreferences:
-    """사용자 서비스별 취향 (세션 내 1회 수집)."""
-    # 호텔 취향
-    hotel_grade: str | None = None
-    hotel_type: str | None = None
-    amenities: tuple[str, ...] = ()
-    # 항공 취향
-    seat_class: str | None = None
-    seat_position: str | None = None
-    meal_preference: str | None = None
-    airline_preference: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class TravelState:
-    """thread_id 기준 세션 전체 state."""
-    travel_context: TravelContext = field(default_factory=TravelContext)
-    ui_context: UIContext = field(default_factory=UIContext)
-    agent_status: AgentStatus = field(default_factory=AgentStatus)
-    user_preferences: UserPreferences = field(default_factory=UserPreferences)
+__all__ = [
+    "TravelContext",
+    "UIContext",
+    "AgentStatus",
+    "UserPreferences",
+    "TravelState",
+]
