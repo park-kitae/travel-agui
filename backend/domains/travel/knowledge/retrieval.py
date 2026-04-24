@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from typing import Any
 
 from .graph import KnowledgeGraph, KnowledgeNode
 from .index import build_travel_knowledge_graph
 
+
+logger = logging.getLogger(__name__)
 
 _BUDGET_TERMS = ("가성비", "저렴", "싼", "낮은", "합리", "예산", "budget")
 _LUXURY_TERMS = ("럭셔리", "고급", "5성", "오성", "최고급", "luxury")
@@ -22,14 +25,27 @@ def search_knowledge(
     hotel_code: str = "",
     intent: str = "",
 ) -> dict[str, Any]:
+    logger.info(
+        "[travel-knowledge] query received query=%r city=%r hotel_code=%r intent=%r",
+        query,
+        city,
+        hotel_code,
+        intent,
+    )
     normalized_query = _normalize(query)
     if not normalized_query:
+        logger.info("[travel-knowledge] invalid request reason='empty query'")
         return {"status": "invalid_request", "message": "query는 비어 있을 수 없습니다."}
 
     graph = _graph()
     known_cities = [node.label for node in graph.find_nodes("city")]
     matched_city = _resolve_city(graph, city or query)
     if city and not matched_city:
+        logger.info(
+            "[travel-knowledge] not found reason='unknown city' city=%r known_cities=%r",
+            city,
+            sorted(known_cities),
+        )
         return {
             "status": "not_found",
             "message": f"{city}에 대한 여행 지식을 찾을 수 없습니다.",
@@ -39,14 +55,28 @@ def search_knowledge(
     if hotel_code:
         hotel = graph.maybe_node(f"hotel:{hotel_code}")
         if not hotel:
+            logger.info("[travel-knowledge] not found reason='unknown hotel_code' hotel_code=%r", hotel_code)
             return {
                 "status": "not_found",
                 "message": f"호텔 코드 {hotel_code}에 대한 여행 지식을 찾을 수 없습니다.",
                 "known_cities": sorted(known_cities),
             }
+        answer_focus = "hotel_recommendation"
+        logger.info(
+            "[travel-knowledge] filters resolved matched_city=%r hotel_code=%r answer_focus=%r",
+            matched_city,
+            hotel_code,
+            answer_focus,
+        )
         return _hotel_response(query, matched_city, [(_score_hotel(graph, hotel, normalized_query), hotel)], graph)
 
     answer_focus = _answer_focus(normalized_query, intent)
+    logger.info(
+        "[travel-knowledge] filters resolved matched_city=%r hotel_code=%r answer_focus=%r",
+        matched_city,
+        hotel_code,
+        answer_focus,
+    )
     hotel_matches = _rank_hotels(graph, normalized_query, matched_city)
     destination_evidence = _destination_evidence(graph, normalized_query, matched_city)
     flight_matches = _rank_flights(graph, normalized_query, matched_city)
@@ -60,6 +90,11 @@ def search_knowledge(
     if destination_evidence:
         return _destination_response(query, matched_city, destination_evidence)
 
+    logger.info(
+        "[travel-knowledge] not found reason='no strong match' matched_city=%r answer_focus=%r",
+        matched_city,
+        answer_focus,
+    )
     return {
         "status": "not_found",
         "query": query,
@@ -133,6 +168,12 @@ def _score_hotel(graph: KnowledgeGraph, hotel: KnowledgeNode, normalized_query: 
         if node and _normalize(node.label) in normalized_query:
             score += 6 if edge.type == "HAS_AMENITY" else 3
 
+    logger.debug(
+        "[travel-knowledge] hotel candidate hotel_code=%r name=%r score=%.2f",
+        props.get("hotel_code"),
+        hotel.label,
+        score,
+    )
     return score
 
 
@@ -224,6 +265,12 @@ def _hotel_response(
                     }
                 )
 
+    _log_evidence_nodes(evidence)
+    logger.info(
+        "[travel-knowledge] final hotel matches count=%d top=%r",
+        len(selected),
+        [f"{hotel.properties.get('hotel_code')}:{hotel.label}" for hotel in selected],
+    )
     return {
         "status": "success",
         "query": query,
@@ -245,6 +292,12 @@ def _destination_response(
         evidence,
         key=lambda item: -_token_overlap_score(normalized_query, _normalize(str(item.get("text", "")))),
     )
+    _log_evidence_nodes(ranked_evidence[:8])
+    logger.info(
+        "[travel-knowledge] final destination evidence count=%d top=%r",
+        len(ranked_evidence),
+        [f"{item.get('source_id')}:{item.get('text')}" for item in ranked_evidence[:5]],
+    )
     return {
         "status": "success",
         "query": query,
@@ -261,6 +314,21 @@ def _flight_response(
     matched_city: str | None,
     flights: list[KnowledgeNode],
 ) -> dict[str, Any]:
+    evidence = [
+        {
+            "source_id": flight.id,
+            "source_label": flight.label,
+            "type": "flight",
+            "text": flight.text,
+        }
+        for flight in flights[:5]
+    ]
+    _log_evidence_nodes(evidence)
+    logger.info(
+        "[travel-knowledge] final flight matches count=%d top=%r",
+        len(flights[:5]),
+        [f"{flight.properties.get('flight')}:{flight.properties.get('airline')}" for flight in flights[:5]],
+    )
     return {
         "status": "success",
         "query": query,
@@ -270,15 +338,7 @@ def _flight_response(
             {"type": "flight", **flight.properties}
             for flight in flights[:5]
         ],
-        "evidence": [
-            {
-                "source_id": flight.id,
-                "source_label": flight.label,
-                "type": "flight",
-                "text": flight.text,
-            }
-            for flight in flights[:5]
-        ],
+        "evidence": evidence,
         "suggested_next_actions": ["정확한 날짜와 인원을 알려주시면 기존 항공편 검색 도구로 조회할 수 있습니다."],
     }
 
@@ -373,3 +433,15 @@ def _dedupe_evidence(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         seen.add(key)
         deduped.append(item)
     return deduped
+
+
+def _log_evidence_nodes(evidence: list[dict[str, Any]]) -> None:
+    used_nodes = [
+        {
+            "id": item.get("source_id", ""),
+            "label": item.get("source_label", ""),
+            "type": item.get("type", ""),
+        }
+        for item in evidence
+    ]
+    logger.info("[travel-knowledge] graph evidence nodes used=%r", used_nodes)

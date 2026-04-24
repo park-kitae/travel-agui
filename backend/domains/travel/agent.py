@@ -14,7 +14,6 @@ from .tools import (
     request_user_input,
     search_flights,
     search_hotels,
-    search_travel_knowledge,
 )
 
 
@@ -99,6 +98,15 @@ STEP 2 — 상세 정보 수집 및 검색:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 도구 사용 가이드
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+도구 우선순위 절대 규칙:
+- 호텔/항공 검색·추천에서 날짜, 인원, 출발지, 목적지 등 상세 정보 수집이 필요하면 request_user_input 이 1순위입니다.
+- request_user_input 이 필요한 상황에서는 같은 응답 턴에서 search_hotels를 함께 호출하지 않습니다.
+- 상세 정보 수집이 완료된 다음 턴부터 search_hotels 또는 검색 도구를 호출합니다.
+- request_user_input은 사용자에게 값을 입력받는 중단점입니다. 이 도구를 호출한 뒤에는 추가 도구 호출 없이 사용자 응답을 기다립니다.
+- 호텔 조건 추천의 최종 도구는 search_hotels입니다.
+- 호텔 조건 추천/비교/필터링 질문은 search_hotels의 recommendation_query 인자에 원문 조건을 넣어 호출합니다.
+- search_travel_knowledge는 직접 호출하지 않습니다. 호텔 리스트 UI를 위해 항상 search_hotels 결과를 최종 반환해야 합니다.
+
 - 호텔 문의 시:
   1) 날짜·인원 정보가 없고 기존 컨텍스트도 없음
      → request_user_input("hotel_booking_details", "", '{{"city":"도시명"}}')
@@ -107,6 +115,10 @@ STEP 2 — 상세 정보 수집 및 검색:
      → request_user_input("hotel_booking_details", '', '{{"city":"도시명","check_in":"YYYY-MM-DD","check_out":"YYYY-MM-DD","guests":N}}')
      (기존 값을 context JSON에 그대로 담아서 전달 → 폼 필드에 자동 pre-fill)
   3) 모든 정보 있음 → search_hotels(city, check_in, check_out, guests)
+  4) 조건 추천/비교/필터링 요청이고 모든 정보 있음
+     → search_hotels(city, check_in, check_out, guests, recommendation_query="사용자 원문 조건")
+     예: "제주도 4성급 호텔 중 무료 주차 가능한 곳 추천해줘"
+     → search_hotels("제주", "YYYY-MM-DD", "YYYY-MM-DD", 2, recommendation_query="제주도 4성급 호텔 중 무료 주차 가능한 곳 추천해줘")
 
 - 항공편 문의 시:
   1) 날짜·인원 정보가 없고 기존 컨텍스트도 없음
@@ -121,14 +133,14 @@ STEP 2 — 상세 정보 수집 및 검색:
 
 - 여행지 정보 → get_travel_tips(destination)
 - 호텔 상세 정보 문의 시 → get_hotel_detail(hotel_code)
-- 추천·비교·조건형 여행 상담 → search_travel_knowledge(query, city, hotel_code, intent)
+- 호텔 추천·비교·조건형 상담 → search_hotels(..., recommendation_query="사용자 원문 조건")
 
 GraphRAG 지식 검색 사용 가이드:
-- 호텔/숙소 추천이지만 날짜·예약 가능 여부보다 조건 비교가 핵심이면 search_travel_knowledge를 먼저 호출
-- 편의시설, 지역, 관광지, 음식, 예산, 여행 목적, 가족/비즈니스/럭셔리/가성비 기준의 질문은 search_travel_knowledge 사용
-- "이 조건이면 어디가 좋아?", "비교해줘", "주의할 점", "근처 관광지도 같이"처럼 여러 데이터가 섞인 질문은 search_travel_knowledge 사용
-- 현재 컨텍스트에 목적지나 선택된 호텔 코드가 있으면 city 또는 hotel_code 인자로 함께 전달
-- search_travel_knowledge 결과의 evidence를 근거로 답변하고, 검색 근거에 없는 사실은 단정하지 않음
+- GraphRAG는 search_hotels 내부에서 recommendation_query를 통해 사용됩니다.
+- 편의시설, 지역, 관광지, 음식, 예산, 여행 목적, 가족/비즈니스/럭셔리/가성비 기준의 호텔 질문은 search_hotels recommendation_query 사용
+- "이 조건이면 어디가 좋아?", "비교해줘", "근처 관광지도 같이"처럼 호텔 리스트가 필요한 질문도 search_hotels recommendation_query 사용
+- search_hotels 결과의 recommendation.evidence를 근거로 답변하고, 검색 근거에 없는 사실은 단정하지 않음
+- 단, request_user_input으로 수집해야 할 날짜·인원·출발지·목적지가 남아 있으면 search_hotels를 호출하지 말고 request_user_input만 호출
 
 호텔 상세 조회 방법 (우선순위 순):
 1) 컨텍스트에 "선택된 호텔 코드"가 있음 → 해당 코드로 get_hotel_detail(hotel_code) 호출
@@ -171,6 +183,5 @@ GraphRAG 지식 검색 사용 가이드:
             FunctionTool(get_hotel_detail),
             FunctionTool(search_flights),
             FunctionTool(get_travel_tips),
-            FunctionTool(search_travel_knowledge),
         ],
     )

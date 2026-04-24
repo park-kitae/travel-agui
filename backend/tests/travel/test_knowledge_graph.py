@@ -1,3 +1,5 @@
+import logging
+
 from domains.travel.knowledge import build_travel_knowledge_graph, search_knowledge
 
 
@@ -52,3 +54,21 @@ def test_search_knowledge_handles_unknown_city():
 
     assert result["status"] == "not_found"
     assert "known_cities" in result
+
+
+def test_search_knowledge_logs_query_graph_nodes_and_final_matches(caplog):
+    caplog.set_level(logging.INFO, logger="domains.travel.knowledge.retrieval")
+
+    result = search_knowledge("오사카에서 온천 있는 숙소 추천", city="오사카")
+
+    assert result["status"] == "success"
+    messages = [record.getMessage() for record in caplog.records]
+
+    assert any("[travel-knowledge] query received" in message for message in messages)
+    assert any("query='오사카에서 온천 있는 숙소 추천'" in message for message in messages)
+    assert any("[travel-knowledge] filters resolved" in message for message in messages)
+    assert any("matched_city='오사카'" in message for message in messages)
+    assert any("[travel-knowledge] graph evidence nodes" in message for message in messages)
+    assert any("amenity:" in message or "highlight:" in message for message in messages)
+    assert any("[travel-knowledge] final hotel matches" in message for message in messages)
+    assert any("HTL-OSA-003:도미 인 난바" in message for message in messages)
