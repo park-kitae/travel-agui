@@ -10,6 +10,7 @@ from google.adk.tools import FunctionTool  # type: ignore[reportMissingImports]
 from .tools import (
     get_hotel_detail,
     get_travel_tips,
+    query_travel_graph,
     request_user_favorite,
     request_user_input,
     search_flights,
@@ -72,9 +73,9 @@ def create_travel_agent() -> LlmAgent:
 호텔 또는 항공편 추천/검색 요청이 들어오면 반드시 아래 순서를 따릅니다:
 
 STEP 1 — 취향 수집 여부 확인:
-- 대화 이력에 "[호텔 취향 수집 완료]" 마커가 없으면
+- 호텔 추천/검색 요청이고 대화 이력에 "[호텔 취향 수집 완료]" 마커가 없으면
   → request_user_favorite("hotel_preference") 호출 후 다음 단계 대기
-- 대화 이력에 "[항공 취향 수집 완료]" 마커가 없으면
+- 항공편 추천/검색 요청이고 대화 이력에 "[항공 취향 수집 완료]" 마커가 없으면
   → request_user_favorite("flight_preference") 호출 후 다음 단계 대기
 - 마커가 이미 있으면 → STEP 2로 바로 진행 (재수집 절대 금지)
 
@@ -100,8 +101,8 @@ STEP 2 — 상세 정보 수집 및 검색:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 도구 우선순위 절대 규칙:
 - 호텔/항공 검색·추천에서 날짜, 인원, 출발지, 목적지 등 상세 정보 수집이 필요하면 request_user_input 이 1순위입니다.
-- request_user_input 이 필요한 상황에서는 같은 응답 턴에서 search_hotels를 함께 호출하지 않습니다.
-- 상세 정보 수집이 완료된 다음 턴부터 search_hotels 또는 검색 도구를 호출합니다.
+- request_user_input 이 필요한 상황에서는 같은 응답 턴에서 search_hotels, search_flights, query_travel_graph를 함께 호출하지 않습니다.
+- 상세 정보 수집이 완료된 다음 턴부터 search_hotels, search_flights 또는 query_travel_graph를 호출합니다.
 - request_user_input은 사용자에게 값을 입력받는 중단점입니다. 이 도구를 호출한 뒤에는 추가 도구 호출 없이 사용자 응답을 기다립니다.
 - 호텔 조건 추천의 최종 도구는 search_hotels입니다.
 - 호텔 조건 추천/비교/필터링 질문은 search_hotels의 recommendation_query 인자에 원문 조건을 넣어 호출합니다.
@@ -142,6 +143,16 @@ GraphRAG 지식 검색 사용 가이드:
 - search_hotels 결과의 recommendation.evidence를 근거로 답변하고, 검색 근거에 없는 사실은 단정하지 않음
 - 단, request_user_input으로 수집해야 할 날짜·인원·출발지·목적지가 남아 있으면 search_hotels를 호출하지 말고 request_user_input만 호출
 
+Neo4j 직접 그래프 조회:
+- 호텔 카드/UI 목록이 필요 없는 관계형 지식 질문은 query_travel_graph를 사용할 수 있습니다.
+- 호텔 추천, 호텔 리스트, 조건 필터링, 가격/날짜/인원 기반 검색, 카드 UI가 필요한 질문에는 query_travel_graph를 최종 도구로 쓰지 말고 search_hotels(..., recommendation_query="사용자 원문 조건")를 사용합니다.
+- 여행지 팁처럼 기존 전용 도구가 있는 질문은 get_travel_tips를 우선 사용합니다.
+- query_travel_graph에는 읽기 전용 Cypher만 전달합니다. MATCH/OPTIONAL MATCH/WITH/UNWIND와 RETURN 중심으로 작성하고 CREATE, MERGE, SET, DELETE, CALL은 절대 사용하지 않습니다.
+- 사용자 입력 값은 문자열로 Cypher에 직접 이어붙이지 말고 parameters_json에 JSON 객체 문자열로 담아 $city, $hotel_code 같은 파라미터로 사용합니다. 예: parameters_json='{{"city":"오사카","amenity":"온천"}}'
+- query_travel_graph 결과로 후보 호텔 코드가 확인되고 호텔 카드가 필요하면, 같은 조건을 search_hotels(..., recommendation_query="사용자 원문 조건")로 다시 조회합니다.
+- query_travel_graph 결과만으로 답변할 때는 rows에 있는 label, text, hotel_code, relationship 근거만 말하고 없는 사실은 추측하지 않습니다.
+- query_travel_graph는 보조 지식 조회 도구입니다. 같은 턴에서 호텔 결과를 사용자에게 보여줘야 한다면 마지막으로 search_hotels를 호출해 UI payload를 반환합니다.
+
 호텔 상세 조회 방법 (우선순위 순):
 1) 컨텍스트에 "선택된 호텔 코드"가 있음 → 해당 코드로 get_hotel_detail(hotel_code) 호출
 2) 메시지에 호텔 코드(HTL-XXX-000 형식)가 있음 → 해당 코드로 get_hotel_detail(hotel_code) 호출
@@ -179,6 +190,7 @@ GraphRAG 지식 검색 사용 가이드:
         tools=[
             FunctionTool(request_user_favorite),
             FunctionTool(request_user_input),
+            FunctionTool(query_travel_graph),
             FunctionTool(search_hotels),
             FunctionTool(get_hotel_detail),
             FunctionTool(search_flights),

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from domains.travel.data import HOTEL_DETAIL_DB, INBOUND_DB, OUTBOUND_DB, TIPS_DB
+from domains.travel.data import HOTEL_DETAIL_DB, INBOUND_DB, OUTBOUND_DB, PREFERENCE_OPTIONS, TIPS_DB
 
 from .graph import KnowledgeEdge, KnowledgeGraph, KnowledgeNode
 
@@ -24,6 +24,8 @@ def build_travel_knowledge_graph() -> KnowledgeGraph:
         _add_route_flights(graph, route, flights, direction="outbound")
     for route, flights in INBOUND_DB.items():
         _add_route_flights(graph, route, flights, direction="inbound")
+
+    _add_preferences(graph)
 
     return graph
 
@@ -197,6 +199,53 @@ def _ensure_city(graph: KnowledgeGraph, city: str) -> None:
     if graph.maybe_node(city_id):
         return
     graph.add_node(KnowledgeNode(id=city_id, type="city", label=city, text=city, properties={"city": city}))
+
+
+def _add_preferences(graph: KnowledgeGraph) -> None:
+    for group_key, options in PREFERENCE_OPTIONS.items():
+        group_id = f"preference_group:{group_key}"
+        graph.add_node(
+            KnowledgeNode(
+                id=group_id,
+                type="preference_group",
+                label=group_key,
+                text=group_key,
+                properties={"key": group_key},
+            )
+        )
+
+        for option_key, option in options.items():
+            label = str(option["label"])
+            option_id = f"preference_option:{group_key}:{option_key}"
+            choices = [str(choice) for choice in option.get("choices", [])]
+            graph.add_node(
+                KnowledgeNode(
+                    id=option_id,
+                    type="preference_option",
+                    label=label,
+                    text=" ".join([label, " ".join(choices)]),
+                    properties={
+                        "group": group_key,
+                        "key": option_key,
+                        "input_type": option["type"],
+                        "choices": choices,
+                    },
+                )
+            )
+            graph.add_edge(KnowledgeEdge(source_id=group_id, target_id=option_id, type="HAS_PREFERENCE_OPTION"))
+
+            for choice in choices:
+                choice_id = f"preference_choice:{group_key}:{option_key}:{_slug(choice)}"
+                graph.add_node(
+                    KnowledgeNode(
+                        id=choice_id,
+                        type="preference_choice",
+                        label=choice,
+                        text=choice,
+                        properties={"group": group_key, "option": option_key},
+                    )
+                )
+                graph.add_edge(KnowledgeEdge(source_id=option_id, target_id=choice_id, type="HAS_CHOICE"))
 
 
 def _lowest_room_price(hotel: dict[str, Any]) -> int:

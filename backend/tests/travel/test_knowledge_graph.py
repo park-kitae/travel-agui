@@ -1,6 +1,7 @@
 import logging
 
-from domains.travel.knowledge import build_travel_knowledge_graph, search_knowledge
+from domains.travel.knowledge import KnowledgeGraph, KnowledgeNode, build_travel_knowledge_graph, search_knowledge
+from domains.travel.knowledge import retrieval
 
 
 def test_build_graph_contains_city_hotel_and_amenity_edges():
@@ -22,6 +23,19 @@ def test_build_graph_contains_destination_tip_nodes():
 
     assert "시부야 스크램블 교차로" in labels
     assert "스시" in labels
+
+
+def test_build_graph_contains_preference_options_and_choices():
+    graph = build_travel_knowledge_graph()
+
+    option = graph.get_node("preference_option:hotel_preference:amenities")
+    assert option.label == "편의시설"
+    assert option.properties["input_type"] == "checkbox"
+
+    choice_edges = graph.outgoing(option.id, "HAS_CHOICE")
+    choice_labels = [graph.get_node(edge.target_id).label for edge in choice_edges]
+    assert "수영장" in choice_labels
+    assert "조기체크인" in choice_labels
 
 
 def test_search_knowledge_matches_amenity_and_city():
@@ -72,3 +86,44 @@ def test_search_knowledge_logs_query_graph_nodes_and_final_matches(caplog):
     assert any("amenity:" in message or "highlight:" in message for message in messages)
     assert any("[travel-knowledge] final hotel matches" in message for message in messages)
     assert any("HTL-OSA-003:도미 인 난바" in message for message in messages)
+
+
+def test_search_knowledge_uses_neo4j_backend_when_enabled(monkeypatch):
+    graph = KnowledgeGraph()
+    graph.add_node(KnowledgeNode(id="city:서울", type="city", label="서울", text="서울", properties={"city": "서울"}))
+    graph.add_node(
+        KnowledgeNode(
+            id="hotel:HTL-SEO-NEO",
+            type="hotel",
+            label="네오 호텔",
+            text="서울 수영장 호텔",
+            properties={
+                "hotel_code": "HTL-SEO-NEO",
+                "city": "서울",
+                "area": "강남",
+                "price": 100000,
+                "stars": 5,
+                "rating": 4.9,
+                "amenities": ["수영장"],
+                "highlights": [],
+            },
+        )
+    )
+
+    class FakeRepository:
+        @classmethod
+        def from_env(cls):
+            return cls()
+
+        def load_graph(self):
+            return graph
+
+    retrieval._graph.cache_clear()
+    monkeypatch.setenv("TRAVEL_KNOWLEDGE_BACKEND", "neo4j")
+    monkeypatch.setattr(retrieval, "Neo4jKnowledgeRepository", FakeRepository)
+
+    result = search_knowledge("서울 수영장 호텔", city="서울")
+
+    assert result["status"] == "success"
+    assert result["results"][0]["hotel_code"] == "HTL-SEO-NEO"
+    retrieval._graph.cache_clear()

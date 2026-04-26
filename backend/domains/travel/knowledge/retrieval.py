@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
+import os
 from functools import lru_cache
 from typing import Any
 
 from .graph import KnowledgeGraph, KnowledgeNode
 from .index import build_travel_knowledge_graph
+from .neo4j_repository import Neo4jKnowledgeRepository
 
 
 logger = logging.getLogger(__name__)
@@ -110,6 +112,14 @@ def search_knowledge(
 
 @lru_cache(maxsize=1)
 def _graph() -> KnowledgeGraph:
+    if os.getenv("TRAVEL_KNOWLEDGE_BACKEND", "").lower() == "neo4j":
+        repository = Neo4jKnowledgeRepository.from_env()
+        try:
+            return repository.load_graph()
+        finally:
+            close = getattr(repository, "close", None)
+            if close:
+                close()
     return build_travel_knowledge_graph()
 
 

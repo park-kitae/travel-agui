@@ -146,6 +146,7 @@ cp backend/.env.example backend/.env
 
 # 2. backend/.env에 GOOGLE_API_KEY 입력
 # DOMAIN_PLUGIN은 생략 가능하며 기본값은 travel
+# Neo4j 지식그래프를 사용할 경우 TRAVEL_KNOWLEDGE_BACKEND=neo4j 유지
 
 # 3. 백엔드 의존성 설치
 cd backend && uv sync && cd ..
@@ -161,6 +162,23 @@ python start.py
 
 ```bash
 DOMAIN_PLUGIN=travel
+```
+
+여행 지식그래프 조회 backend:
+
+```bash
+TRAVEL_KNOWLEDGE_BACKEND=neo4j
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=travel-agui-neo4j
+NEO4J_DATABASE=neo4j
+```
+
+Neo4j 데이터를 다시 적재하려면:
+
+```bash
+cd backend
+uv run python -m domains.travel.knowledge.neo4j_loader --clear
 ```
 
 runtime loader는 아래 두 형태를 모두 지원합니다.
