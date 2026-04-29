@@ -6,7 +6,7 @@ import json
 from types import SimpleNamespace
 import pytest  # type: ignore[reportMissingImports]
 from unittest.mock import AsyncMock, patch, MagicMock
-from a2a.types import Artifact, DataPart, Part, TaskArtifactUpdateEvent  # type: ignore[reportMissingImports]
+from a2a.types import Artifact, DataPart, Part, TaskArtifactUpdateEvent, TextPart  # type: ignore[reportMissingImports]
 
 
 def make_request_body(user_message: str = "서울 호텔 추천해줘") -> dict:
@@ -51,6 +51,38 @@ def make_agent_state_artifact(snapshot: dict) -> MagicMock:
         ),
         append=False,
         last_chunk=False,
+    )
+    response = MagicMock()
+    response.root.result = event
+    return response
+
+
+def make_text_artifact(text: str, *, append: bool, last_chunk: bool) -> MagicMock:
+    event = TaskArtifactUpdateEvent(
+        task_id="task-001",
+        context_id="test-thread-001",
+        artifact=Artifact(
+            artifact_id="artifact-text-001",
+            parts=[Part(root=TextPart(text=text))],
+        ),
+        append=append,
+        last_chunk=last_chunk,
+    )
+    response = MagicMock()
+    response.root.result = event
+    return response
+
+
+def make_multi_text_artifact(texts: list[str], *, append: bool, last_chunk: bool) -> MagicMock:
+    event = TaskArtifactUpdateEvent(
+        task_id="task-001",
+        context_id="test-thread-001",
+        artifact=Artifact(
+            artifact_id="artifact-text-001",
+            parts=[Part(root=TextPart(text=text)) for text in texts],
+        ),
+        append=append,
+        last_chunk=last_chunk,
     )
     response = MagicMock()
     response.root.result = event
@@ -246,6 +278,77 @@ async def test_run_agent_forwards_client_state_in_metadata_and_avoids_duplicate_
     assert sent_request.params.metadata == {"client_state": body["state"]}
     runtime.prepare_request.assert_called_once_with("test-thread-001", body["state"], "도쿄 호텔 추천해줘")
     assert sent_request.params.message.parts[0].root.text == "[runtime-context] 도쿄 호텔 추천해줘"
+
+
+async def test_run_agent_preserves_chunked_a2a_text_as_multiple_agui_events(client):
+    """Chunked text artifacts should stay chunked after A2A -> AG-UI conversion."""
+
+    async def mock_a2a_stream(_request):
+        yield make_text_artifact("안", append=False, last_chunk=False)
+        yield make_text_artifact("녕", append=True, last_chunk=True)
+
+    mock_card = MagicMock()
+    mock_a2a_client = MagicMock()
+    mock_a2a_client.send_message_streaming = MagicMock(side_effect=mock_a2a_stream)
+    runtime = make_runtime(enriched_message="[runtime-context] 안녕하세요")
+
+    with (
+        patch("main.httpx.AsyncClient") as mock_http,
+        patch("main.AgentCard.model_validate", return_value=mock_card),
+        patch("main.A2AClient", return_value=mock_a2a_client),
+        patch("main.initialize_runtime_or_die"),
+        patch("main.get_runtime", return_value=runtime),
+    ):
+        mock_response = AsyncMock()
+        mock_response.json = MagicMock(return_value={"name": "test-agent", "url": "http://test"})
+        mock_response.raise_for_status = MagicMock()
+
+        mock_http_instance = AsyncMock()
+        mock_http_instance.get = AsyncMock(return_value=mock_response)
+        mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http_instance)
+        mock_http.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        response = await client.post("/agui/run", json=make_request_body("안녕하세요"))
+
+    assert response.status_code == 200
+    events = parse_sse_events(response.text)
+    assert [event["delta"] for event in events if event.get("type") == "TEXT_MESSAGE_CHUNK"] == ["안", "녕"]
+
+
+async def test_run_agent_multi_part_final_artifact_stays_one_assistant_turn(client):
+    """One final TaskArtifactUpdateEvent with multiple TextParts must stay one AG-UI message."""
+
+    async def mock_a2a_stream(_request):
+        yield make_multi_text_artifact(["안", "녕"], append=False, last_chunk=True)
+
+    mock_card = MagicMock()
+    mock_a2a_client = MagicMock()
+    mock_a2a_client.send_message_streaming = MagicMock(side_effect=mock_a2a_stream)
+    runtime = make_runtime(enriched_message="[runtime-context] 안녕하세요")
+
+    with (
+        patch("main.httpx.AsyncClient") as mock_http,
+        patch("main.AgentCard.model_validate", return_value=mock_card),
+        patch("main.A2AClient", return_value=mock_a2a_client),
+        patch("main.initialize_runtime_or_die"),
+        patch("main.get_runtime", return_value=runtime),
+    ):
+        mock_response = AsyncMock()
+        mock_response.json = MagicMock(return_value={"name": "test-agent", "url": "http://test"})
+        mock_response.raise_for_status = MagicMock()
+
+        mock_http_instance = AsyncMock()
+        mock_http_instance.get = AsyncMock(return_value=mock_response)
+        mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http_instance)
+        mock_http.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        response = await client.post("/agui/run", json=make_request_body("안녕하세요"))
+
+    assert response.status_code == 200
+    events = parse_sse_events(response.text)
+    assert [event["delta"] for event in events if event.get("type") == "TEXT_MESSAGE_CHUNK"] == ["안", "녕"]
+    assert [event["type"] for event in events].count("TEXT_MESSAGE_START") == 1
+    assert [event["type"] for event in events].count("TEXT_MESSAGE_END") == 1
 
 
 async def test_run_agent_runtime_preparation_error_returns_run_error(client):

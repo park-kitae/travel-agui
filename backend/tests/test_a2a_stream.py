@@ -13,7 +13,13 @@ from executor import ADKAgentExecutor
 from state.store import SerializedStateStore
 
 
-def make_text_artifact(text: str, last_chunk: bool = True):
+def make_text_artifact(
+    text: str,
+    *,
+    last_chunk: bool = True,
+    append: bool = False,
+    artifact_id: str = "artifact-text-001",
+):
     """TextPart를 담은 TaskArtifactUpdateEvent mock 생성."""
     from a2a.types import TaskArtifactUpdateEvent, Artifact, Part, TextPart  # type: ignore[reportMissingImports]
 
@@ -21,11 +27,41 @@ def make_text_artifact(text: str, last_chunk: bool = True):
     part.root = TextPart(text=text)
 
     artifact = MagicMock()
+    artifact.artifact_id = artifact_id
     artifact.parts = [part]
 
     event = MagicMock(spec=TaskArtifactUpdateEvent)
     event.artifact = artifact
     event.last_chunk = last_chunk
+    event.append = append
+
+    response = MagicMock()
+    response.root.result = event
+    return response
+
+
+def make_multi_text_artifact(
+    texts: list[str],
+    *,
+    last_chunk: bool = True,
+    append: bool = False,
+    artifact_id: str = "artifact-text-001",
+):
+    """여러 TextPart를 담은 TaskArtifactUpdateEvent mock 생성."""
+    from a2a.types import TaskArtifactUpdateEvent, Artifact, Part, TextPart  # type: ignore[reportMissingImports]
+
+    artifact = MagicMock()
+    artifact.artifact_id = artifact_id
+    artifact.parts = []
+    for text in texts:
+        part = MagicMock()
+        part.root = TextPart(text=text)
+        artifact.parts.append(part)
+
+    event = MagicMock(spec=TaskArtifactUpdateEvent)
+    event.artifact = artifact
+    event.last_chunk = last_chunk
+    event.append = append
 
     response = MagicMock()
     response.root.result = event
@@ -93,6 +129,38 @@ def make_function_call_adk_event(tool_name: str, args: dict):
     event = MagicMock()
     event.content = content
     event.is_final_response.return_value = False
+    return event
+
+
+def make_text_adk_event(text: str, *, is_final: bool) -> MagicMock:
+    part = MagicMock()
+    part.text = text
+    part.function_call = None
+    part.function_response = None
+
+    content = MagicMock()
+    content.parts = [part]
+
+    event = MagicMock()
+    event.content = content
+    event.is_final_response.return_value = is_final
+    return event
+
+
+def make_multi_text_adk_event(texts: list[str], *, is_final: bool) -> MagicMock:
+    content = MagicMock()
+    content.parts = []
+
+    for text in texts:
+        part = MagicMock()
+        part.text = text
+        part.function_call = None
+        part.function_response = None
+        content.parts.append(part)
+
+    event = MagicMock()
+    event.content = content
+    event.is_final_response.return_value = is_final
     return event
 
 
@@ -175,6 +243,91 @@ async def test_text_chunk_contains_correct_delta():
     events = await collect_stream([make_text_artifact("테스트 텍스트")])
     chunk = next(e for e in events if e["type"] == "TEXT_MESSAGE_CHUNK")
     assert chunk["delta"] == "테스트 텍스트"
+
+
+async def test_text_chunks_share_one_message_boundary() -> None:
+    """두 개의 텍스트 청크는 하나의 assistant turn으로 변환되어야 한다."""
+    events = await collect_stream([
+        make_text_artifact("안", last_chunk=False),
+        make_text_artifact("녕", last_chunk=True),
+    ])
+
+    assert [event["type"] for event in events] == [
+        "TEXT_MESSAGE_START",
+        "TEXT_MESSAGE_CHUNK",
+        "TEXT_MESSAGE_CHUNK",
+        "TEXT_MESSAGE_END",
+    ]
+    assert [event["delta"] for event in events if event["type"] == "TEXT_MESSAGE_CHUNK"] == ["안", "녕"]
+
+
+@pytest.mark.asyncio
+async def test_multi_part_text_artifact_keeps_one_message_boundary() -> None:
+    events = await collect_stream([
+        make_multi_text_artifact(["안", "녕"], last_chunk=True),
+    ])
+
+    assert [event["type"] for event in events] == [
+        "TEXT_MESSAGE_START",
+        "TEXT_MESSAGE_CHUNK",
+        "TEXT_MESSAGE_CHUNK",
+        "TEXT_MESSAGE_END",
+    ]
+    assert [event["delta"] for event in events if event["type"] == "TEXT_MESSAGE_CHUNK"] == ["안", "녕"]
+    assert [event["type"] for event in events].count("TEXT_MESSAGE_START") == 1
+    assert [event["type"] for event in events].count("TEXT_MESSAGE_END") == 1
+
+
+@pytest.mark.asyncio
+async def test_converter_normalizes_cumulative_appended_text_chunks() -> None:
+    events = await collect_stream([
+        make_text_artifact("안", last_chunk=False, append=False, artifact_id="artifact-text-123"),
+        make_text_artifact("안녕", last_chunk=False, append=True, artifact_id="artifact-text-123"),
+        make_text_artifact("안녕", last_chunk=True, append=True, artifact_id="artifact-text-123"),
+    ])
+
+    assert [event["delta"] for event in events if event["type"] == "TEXT_MESSAGE_CHUNK"] == ["안", "녕"]
+    assert [event["type"] for event in events] == [
+        "TEXT_MESSAGE_START",
+        "TEXT_MESSAGE_CHUNK",
+        "TEXT_MESSAGE_CHUNK",
+        "TEXT_MESSAGE_END",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_runtime_backed_executor_cumulative_text_stream_emits_delta_chunks_once() -> None:
+    events = await execute_and_collect_stream(
+        [
+            make_text_adk_event("안", is_final=False),
+            make_text_adk_event("안녕", is_final=False),
+            make_text_adk_event("안녕", is_final=True),
+        ]
+    )
+
+    assert [event["delta"] for event in events if event["type"] == "TEXT_MESSAGE_CHUNK"] == ["안", "녕"]
+    assert [event["type"] for event in events].count("TEXT_MESSAGE_END") == 1
+
+
+@pytest.mark.asyncio
+async def test_runtime_backed_executor_multi_part_final_event_stays_one_assistant_turn() -> None:
+    events = await execute_and_collect_stream(
+        [
+            make_multi_text_adk_event(["안", "녕"], is_final=True),
+        ]
+    )
+
+    assert [event["type"] for event in events] == [
+        "STEP_STARTED",
+        "TEXT_MESSAGE_START",
+        "TEXT_MESSAGE_CHUNK",
+        "TEXT_MESSAGE_CHUNK",
+        "TEXT_MESSAGE_END",
+        "STEP_FINISHED",
+    ]
+    assert [event["delta"] for event in events if event["type"] == "TEXT_MESSAGE_CHUNK"] == ["안", "녕"]
+    assert [event["type"] for event in events].count("TEXT_MESSAGE_START") == 1
+    assert [event["type"] for event in events].count("TEXT_MESSAGE_END") == 1
 
 
 async def test_working_status_produces_step_started():

@@ -37,6 +37,27 @@ async def a2a_to_agui_stream(
       그 .result 가 Task | Message | TaskStatusUpdateEvent | TaskArtifactUpdateEvent 입니다.
     """
     current_msg_id: str | None = None
+    current_artifact_id: str | None = None
+    current_artifact_text = ""
+
+    def reset_text_stream() -> None:
+        nonlocal current_msg_id, current_artifact_id, current_artifact_text
+        current_msg_id = None
+        current_artifact_id = None
+        current_artifact_text = ""
+
+    def update_text_delta(text: str, *, append: bool, artifact_id: str | None) -> str:
+        nonlocal current_artifact_id, current_artifact_text
+        if not append or artifact_id != current_artifact_id:
+            current_artifact_id = artifact_id
+            current_artifact_text = text
+            return text
+        if current_artifact_text and text.startswith(current_artifact_text):
+            delta = text[len(current_artifact_text):]
+            current_artifact_text = text
+            return delta
+        current_artifact_text += text
+        return text
 
     async for response in a2a_stream:
         # result 꺼내기 (root → result)
@@ -45,29 +66,36 @@ async def a2a_to_agui_stream(
 
         # ── 텍스트 아티팩트 청크 ─────────────────────
         if isinstance(result, TaskArtifactUpdateEvent):
+            artifact_id = getattr(result.artifact, "artifact_id", None)
+            append = getattr(result, "append", False)
             for part in result.artifact.parts:
                 p = part.root if hasattr(part, "root") else part
 
                 # 텍스트 파트
-                if isinstance(p, TextPart) and p.text:
-                    if current_msg_id is None:
-                        current_msg_id = str(uuid.uuid4())
-                        yield encoder.encode(TextMessageStartEvent(
-                            type=EventType.TEXT_MESSAGE_START,
-                            message_id=current_msg_id,
-                            role="assistant",
-                        ))
-                    yield encoder.encode(TextMessageChunkEvent(
-                        type=EventType.TEXT_MESSAGE_CHUNK,
-                        message_id=current_msg_id,
-                        delta=p.text,
-                    ))
-                    if result.last_chunk:
-                        yield encoder.encode(TextMessageEndEvent(
-                            type=EventType.TEXT_MESSAGE_END,
-                            message_id=current_msg_id,
-                        ))
-                        current_msg_id = None
+                if isinstance(p, TextPart):
+                    if p.text:
+                        if current_msg_id is not None and artifact_id != current_artifact_id and not append:
+                            yield encoder.encode(TextMessageEndEvent(
+                                type=EventType.TEXT_MESSAGE_END,
+                                message_id=current_msg_id,
+                            ))
+                            reset_text_stream()
+                        if current_msg_id is None:
+                            current_msg_id = str(uuid.uuid4())
+                            current_artifact_id = artifact_id
+                            current_artifact_text = ""
+                            yield encoder.encode(TextMessageStartEvent(
+                                type=EventType.TEXT_MESSAGE_START,
+                                message_id=current_msg_id,
+                                role="assistant",
+                            ))
+                        delta = update_text_delta(p.text, append=append, artifact_id=artifact_id)
+                        if delta:
+                            yield encoder.encode(TextMessageChunkEvent(
+                                type=EventType.TEXT_MESSAGE_CHUNK,
+                                message_id=current_msg_id,
+                                delta=delta,
+                            ))
 
                 # 데이터 파트 → _agui_event 필드로 분기
                 elif hasattr(p, "data") and p.data:
@@ -140,6 +168,13 @@ async def a2a_to_agui_stream(
                         except Exception as e:
                             logger.warning(f"StateSnapshot 직렬화 실패: {e}")
 
+            if result.last_chunk and current_msg_id is not None:
+                yield encoder.encode(TextMessageEndEvent(
+                    type=EventType.TEXT_MESSAGE_END,
+                    message_id=current_msg_id,
+                ))
+                reset_text_stream()
+
         # ── 태스크 상태 업데이트 ─────────────────────
         elif isinstance(result, TaskStatusUpdateEvent):
             state = result.status.state
@@ -155,7 +190,7 @@ async def a2a_to_agui_stream(
                         type=EventType.TEXT_MESSAGE_END,
                         message_id=current_msg_id,
                     ))
-                    current_msg_id = None
+                    reset_text_stream()
                 yield encoder.encode(StepFinishedEvent(
                     type=EventType.STEP_FINISHED,
                     step_name="에이전트 완료",
@@ -183,7 +218,7 @@ async def a2a_to_agui_stream(
                     type=EventType.TEXT_MESSAGE_END,
                     message_id=current_msg_id,
                 ))
-                current_msg_id = None
+                reset_text_stream()
 
     # 스트림 종료 후 열린 메시지 정리
     if current_msg_id:
