@@ -288,6 +288,8 @@ class ADKAgentExecutor(AgentExecutor):
 
                     # 함수 호출 (Tool Call 시작) → agent_state STATE_SNAPSHOT 먼저 발행 후 TOOL_CALL_START
                     elif hasattr(part, "function_call") and part.function_call:
+                        if getattr(adk_event, "partial", False) is True:
+                            continue
                         fc = part.function_call
                         args_dict = dict(fc.args) if fc.args else {}
 

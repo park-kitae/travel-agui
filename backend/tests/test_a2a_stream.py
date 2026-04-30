@@ -113,7 +113,7 @@ def make_event_response(event):
     return response
 
 
-def make_function_call_adk_event(tool_name: str, args: dict):
+def make_function_call_adk_event(tool_name: str, args: dict, *, partial: bool = False):
     fc = MagicMock()
     fc.name = tool_name
     fc.args = args
@@ -128,6 +128,7 @@ def make_function_call_adk_event(tool_name: str, args: dict):
 
     event = MagicMock()
     event.content = content
+    event.partial = partial
     event.is_final_response.return_value = False
     return event
 
@@ -397,6 +398,31 @@ async def test_runtime_backed_executor_stream_emits_state_delta_and_snapshot_eve
     snapshot_event = next(event for event in events if event["type"] == "STATE_SNAPSHOT")
     assert snapshot_event["snapshot"]["snapshot_type"] == "tool_result"
     assert snapshot_event["snapshot"]["tool"] == "search_hotels"
+
+
+@pytest.mark.asyncio
+async def test_runtime_backed_executor_ignores_partial_function_call_events() -> None:
+    events = await execute_and_collect_stream(
+        [
+            make_function_call_adk_event(
+                "request_user_favorite",
+                {"favorite_type": "hotel_preference"},
+                partial=True,
+            ),
+            make_function_call_adk_event(
+                "request_user_favorite",
+                {"favorite_type": "hotel_preference"},
+                partial=False,
+            ),
+        ]
+    )
+
+    tool_call_starts = [event for event in events if event["type"] == "TOOL_CALL_START"]
+    tool_call_args = [event for event in events if event["type"] == "TOOL_CALL_ARGS"]
+
+    assert len(tool_call_starts) == 1
+    assert len(tool_call_args) == 1
+    assert tool_call_starts[0]["toolCallName"] == "request_user_favorite"
 
 
 @pytest.mark.asyncio
