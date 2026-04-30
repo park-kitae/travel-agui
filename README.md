@@ -112,16 +112,16 @@ travel-agui/
 │   │       ├── data/
 │   │       └── tools/
 │   ├── state/
-│   │   ├── store.py
-│   │   ├── models.py          # compatibility wrapper
-│   │   ├── context_builder.py # compatibility wrapper
-│   │   └── manager.py         # compatibility wrapper
-│   ├── data/                  # compatibility wrappers
-│   ├── tools/                 # compatibility wrappers
+│   │   └── store.py
 │   └── tests/
 ├── frontend/
 └── openspec/
 ```
+
+주의:
+
+- `backend/agent.py`, `backend/data/*`, `backend/tools/*`, `backend/state/{models,context_builder,manager}.py` 같은 compatibility wrapper는 제거되었습니다.
+- 새 코드는 `backend/domains/travel/*` 또는 `backend/state/store.py` 를 직접 참조해야 합니다.
 
 ---
 
@@ -211,6 +211,13 @@ uv run pytest
 cd backend
 DOMAIN_PLUGIN=travel uv run pytest -q
 DOMAIN_PLUGIN=fake uv run pytest tests/test_domain_runtime.py tests/test_fake_plugin_smoke.py -v
+```
+
+### wrapper 회귀 방지 테스트
+
+```bash
+cd backend
+uv run pytest tests/test_compatibility_cleanup.py -q
 ```
 
 ### 프론트엔드 검증

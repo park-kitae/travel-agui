@@ -41,18 +41,17 @@ Google ADK 기반 여행 AI 에이전트 + AG-UI 프론트엔드 프로젝트.
 | `backend/domains/travel/tools/*` | 여행 도구 구현 |
 | `backend/domains/fake/plugin.py` | 도메인 스왑 검증용 fake plugin |
 
-### 호환성 wrapper
+### import 원칙
 
-아래 경로는 기존 import를 깨지 않기 위한 thin wrapper입니다.
+이제 backend 호환성 wrapper는 제거되었습니다.
 
-- `backend/agent.py`
-- `backend/state/models.py`
-- `backend/state/context_builder.py`
-- `backend/state/manager.py`
-- `backend/data/*.py`
-- `backend/tools/*.py`
+- travel agent는 `backend/domains/travel/agent.py`
+- state 모델/상태 전이는 `backend/domains/travel/state.py`, `backend/domains/travel/state_manager.py`
+- context builder는 `backend/domains/travel/context.py`
+- data/tool 구현은 `backend/domains/travel/data/*`, `backend/domains/travel/tools/*`
+- 공통 상태 저장소만 `backend/state/store.py` 에 남아 있습니다
 
-실제 구현 권한은 `backend/domains/travel/*` 에 있습니다.
+새 코드는 compatibility 경로를 만들지 말고 실제 구현 경로를 직접 import 해야 합니다.
 
 ---
 
@@ -103,6 +102,7 @@ DOMAIN_PLUGIN=fake uv run pytest tests/test_domain_runtime.py tests/test_fake_pl
 | `backend/main.py` | runtime 기반 AG-UI Gateway |
 | `backend/tests/test_domain_runtime.py` | runtime/loader/typed emission 테스트 |
 | `backend/tests/test_fake_plugin_smoke.py` | fake plugin 스왑 스모크 테스트 |
+| `backend/tests/test_compatibility_cleanup.py` | 제거된 backend wrapper가 다시 생기지 않도록 검증 |
 | `docs/domain_separate.md` | 분리 기준 설명 문서 |
 
 ---

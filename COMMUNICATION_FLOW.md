@@ -331,20 +331,23 @@ converter는 A2A artifact/status를 AG-UI SSE 이벤트로 변환합니다.
 
 ---
 
-## 호환성 wrapper는 왜 남아 있나
+## backend wrapper 정리 상태
 
-분리 후에도 기존 import를 한 번에 다 깨지 않기 위해 아래 wrapper를 유지했습니다.
+초기 분리 단계에서 잠깐 유지했던 backend compatibility wrapper는 현재 모두 제거되었습니다.
 
-| 경로 | 현재 역할 |
+현재 직접 import 해야 하는 authoritative 경로는 아래와 같습니다.
+
+| 관심사 | authoritative 경로 |
 |---|---|
-| `backend/agent.py` | `domains.travel.agent` re-export |
-| `backend/state/models.py` | `domains.travel.state` re-export |
-| `backend/state/context_builder.py` | `domains.travel.context` re-export |
-| `backend/state/manager.py` | `domains.travel.state_manager` re-export |
-| `backend/data/*.py` | `domains.travel.data.*` thin wrapper |
-| `backend/tools/*.py` | `domains.travel.tools.*` thin wrapper |
+| agent | `backend/domains/travel/agent.py` |
+| state model / transition | `backend/domains/travel/state.py` |
+| state manager | `backend/domains/travel/state_manager.py` |
+| context builder | `backend/domains/travel/context.py` |
+| travel data | `backend/domains/travel/data/*` |
+| travel tools | `backend/domains/travel/tools/*` |
+| 공통 상태 저장 | `backend/state/store.py` |
 
-이 wrapper는 **구현 권한이 아니라 호환성만** 담당합니다.
+즉, 현재 backend 루트에는 re-export용 `agent.py`, `data/*.py`, `tools/*.py`, `state/models.py` 같은 thin wrapper가 더 이상 없습니다.
 
 ---
 
