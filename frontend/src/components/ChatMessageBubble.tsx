@@ -1,3 +1,4 @@
+import { Bot, User } from 'lucide-react'
 import { ChatMessage as ChatMessageType, ToolResultSnapshot } from '../types'
 import { ToolCallIndicator } from './ToolCallIndicator'
 import { ToolResultCard } from './ToolResultCard'
@@ -15,7 +16,6 @@ export function ChatMessageBubble({ message, onFormSubmit, onHotelClick }: Props
 
   const handleFormSubmit = (data: Record<string, string>) => {
     if (onFormSubmit) {
-      // 구조화된 데이터를 자연어로 변환
       const formattedMessage = Object.entries(data)
         .map(([key, value]) => `${key}: ${value}`)
         .join(', ')
@@ -25,22 +25,15 @@ export function ChatMessageBubble({ message, onFormSubmit, onHotelClick }: Props
 
   return (
     <div className={`message-row ${isUser ? 'user' : 'assistant'}`}>
-      {!isUser && (
-        <div className="avatar assistant-avatar">
-          <span>✈</span>
-        </div>
-      )}
+      <div className={`avatar ${isUser ? 'user-avatar' : 'assistant-avatar'}`}>
+        {isUser ? <User size={15} /> : <Bot size={15} />}
+      </div>
 
       <div className="message-body">
-        {/* 툴 실행 인디케이터 (어시스턴트만) */}
         {!isUser && (message.toolCalls.length > 0 || message.currentStep) && (
-          <ToolCallIndicator
-            toolCalls={message.toolCalls}
-            currentStep={message.currentStep}
-          />
+          <ToolCallIndicator toolCalls={message.toolCalls} currentStep={message.currentStep} />
         )}
 
-        {/* 도구 결과 카드들 */}
         {!isUser && message.snapshots.length > 0 && (
           <div className="snapshots">
             {message.snapshots.map((snap, i) => (
@@ -49,7 +42,6 @@ export function ChatMessageBubble({ message, onFormSubmit, onHotelClick }: Props
           </div>
         )}
 
-        {/* 사용자 입력 폼 */}
         {!isUser && message.userInputRequest && !message.userInputRequest.submitted && (
           <div className="user-input-form-container">
             <UserInputForm
@@ -60,19 +52,18 @@ export function ChatMessageBubble({ message, onFormSubmit, onHotelClick }: Props
           </div>
         )}
 
-        {/* 텍스트 버블 */}
         {(message.content || isStreaming) && (
           <div className={`bubble ${isUser ? 'bubble-user' : 'bubble-assistant'} ${message.status === 'error' ? 'bubble-error' : ''}`}>
             {message.content
-              ? message.content.split('\n').map((line, i) => (
+              ? message.content.split('\n').map((line, i, lines) => (
                   <span key={i}>
                     {line}
-                    {i < message.content.split('\n').length - 1 && <br />}
+                    {i < lines.length - 1 && <br />}
                   </span>
                 ))
               : isStreaming
-              ? <span className="typing-placeholder">생각 중...</span>
-              : null}
+                ? <span className="typing-placeholder">답변을 정리하고 있습니다.</span>
+                : null}
             {isStreaming && message.content && <span className="cursor" />}
           </div>
         )}
@@ -81,12 +72,6 @@ export function ChatMessageBubble({ message, onFormSubmit, onHotelClick }: Props
           {message.timestamp.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
         </div>
       </div>
-
-      {isUser && (
-        <div className="avatar user-avatar">
-          <span>나</span>
-        </div>
-      )}
     </div>
   )
 }

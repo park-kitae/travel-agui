@@ -1,8 +1,14 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
+import { ArrowUp, LoaderCircle, PanelRightOpen, RotateCcw, Square } from 'lucide-react'
 import { useAGUIChat } from './hooks/useAGUIChat'
 import { ChatMessageBubble } from './components/ChatMessageBubble'
 import { StatePanel } from './components/StatePanel'
 import { FavoritePanel } from './components/FavoritePanel'
+import { Button } from './components/ui/button'
+import { Badge } from './components/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './components/ui/dialog'
+import { Textarea } from './components/ui/textarea'
 
 const SUGGESTIONS = [
   '도쿄 호텔 추천해줘 (6월 10일~14일, 2명)',
@@ -13,18 +19,16 @@ const SUGGESTIONS = [
 
 export default function App() {
   const {
-  messages, isRunning, error, agentState, uiContext, updateUiContext,
-  pendingFavoriteRequest,
-  sendMessage, interruptAndSend, stopStreaming, clearMessages,
-  markFormSubmitted, submitFavorite,
-} = useAGUIChat()
+    messages, isRunning, error, agentState, uiContext, updateUiContext,
+    pendingFavoriteRequest,
+    sendMessage, interruptAndSend, stopStreaming, clearMessages,
+    markFormSubmitted, submitFavorite,
+  } = useAGUIChat()
   const [input, setInput] = useState('')
-  // 모바일(<1024px)에서는 기본으로 닫음, 데스크톱에서는 열림
-  const [statePanelOpen, setStatePanelOpen] = useState(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true)
+  const [stateViewerOpen, setStateViewerOpen] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // 새 메시지마다 스크롤
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -57,10 +61,8 @@ export default function App() {
   const handleFormSubmit = (messageId: string, data: Record<string, string>) => {
     if (isRunning) return
 
-    // 폼 제출 상태 업데이트
     markFormSubmitted(messageId)
 
-    // 날짜를 자연어로 변환하는 함수
     const formatDate = (dateStr: string): string => {
       const date = new Date(dateStr)
       const year = date.getFullYear()
@@ -71,7 +73,6 @@ export default function App() {
 
     let formattedMessage = ''
 
-    // 호텔 예약 폼
     if (data.city !== undefined || data.check_in !== undefined) {
       const city = data.city || ''
       const checkIn = data.check_in ? formatDate(data.check_in) : ''
@@ -83,9 +84,7 @@ export default function App() {
       } else if (checkIn && checkOut && guests) {
         formattedMessage = `${checkIn}부터 ${checkOut}까지 ${guests}명이 숙박할 호텔을 검색합니다.`
       }
-    }
-    // 항공편 예약 폼
-    else if (data.origin !== undefined || data.destination !== undefined) {
+    } else if (data.origin !== undefined || data.destination !== undefined) {
       const origin = data.origin || ''
       const destination = data.destination || ''
       const tripType = data.trip_type || '편도'
@@ -100,7 +99,6 @@ export default function App() {
       }
     }
 
-    // 폴백: 기존 방식
     if (!formattedMessage) {
       formattedMessage = Object.entries(data)
         .filter(([key]) => key !== '_formatted')
@@ -119,111 +117,146 @@ export default function App() {
   const isEmpty = messages.length === 0
 
   return (
-    <div className="app-layout">
-    <div className="chat-column app">
-      {/* 헤더 */}
-      <header className="header">
-        <div className="header-inner">
-          <div className="logo">
-            <span className="logo-icon">✈</span>
-            <div>
+    <div className="app-shell">
+      <div className="app-layout">
+        <header className="header">
+          <div className="header-inner">
+            <div className="brand-block">
+              <div className="brand-kicker">Travel Concierge</div>
               <div className="logo-title">Travel AI</div>
-              <div className="logo-sub">여행 상담 에이전트</div>
+              <div className="logo-sub">호텔, 항공편, 여행 정보를 한 화면에서 정리합니다.</div>
             </div>
-          </div>
-          <div className="header-right">
-            <div className={`status-dot ${isRunning ? 'running' : 'idle'}`} />
-            <span className="status-label">{isRunning ? '응답 중...' : '대기 중'}</span>
-            {messages.length > 0 && (
-              <button className="clear-btn" onClick={clearMessages} title="대화 초기화">
-                ↺
-              </button>
-            )}
-          </div>
-        </div>
-      </header>
 
-      {/* 채팅 영역 */}
-      <main className="chat-area">
-        {isEmpty ? (
-          <div className="welcome">
-            <div className="welcome-icon">✈️</div>
-            <h1 className="welcome-title">어디로 떠나고 싶으신가요?</h1>
-            <p className="welcome-desc">
-              호텔, 항공편, 여행 정보를 AI가 실시간으로 검색해 드립니다
-            </p>
-            <div className="suggestions">
-              {SUGGESTIONS.map((s, i) => (
-                <button key={i} className="suggestion-btn" onClick={() => handleSuggestion(s)}>
-                  {s}
-                </button>
-              ))}
+            <div className="header-actions">
+              <Badge variant={isRunning ? 'success' : 'secondary'} className="status-badge">
+                {isRunning ? '응답 중' : '대기 중'}
+              </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                className="state-trigger"
+                onClick={() => setStateViewerOpen(true)}
+                aria-label="상태 보기"
+              >
+                <PanelRightOpen size={16} />
+                상태 보기
+              </Button>
+              {messages.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="clear-btn"
+                  onClick={clearMessages}
+                  title="대화 초기화"
+                  aria-label="대화 초기화"
+                >
+                  <RotateCcw size={16} />
+                </Button>
+              )}
             </div>
           </div>
-        ) : (
-          <div className="messages">
-            {messages.map(msg => (
-              <ChatMessageBubble
-                key={msg.id}
-                message={msg}
-                onFormSubmit={(data) => handleFormSubmit(msg.id, data)}
-                onHotelClick={handleHotelClick}
-              />
-            ))}
-            <div ref={bottomRef} />
+        </header>
+
+        <main className="chat-area">
+          {isEmpty ? (
+            <section className="welcome">
+              <div className="welcome-copy">
+                <Badge variant="outline" className="welcome-badge">Premium planning</Badge>
+                <h1 className="welcome-title">원하는 여정을 바로 요청하세요</h1>
+                <p className="welcome-desc">
+                  일정, 인원, 선호 조건만 알려주시면 호텔과 항공, 여행 정보를 흐름에 맞춰 이어서 안내합니다.
+                </p>
+              </div>
+              <div className="suggestions-grid">
+                {SUGGESTIONS.map((s, i) => (
+                  <Card key={i} className="suggestion-card">
+                    <button className="suggestion-btn" onClick={() => handleSuggestion(s)}>
+                      <CardHeader>
+                        <CardTitle>추천 요청 {i + 1}</CardTitle>
+                        <CardDescription>바로 실행</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <p>{s}</p>
+                      </CardContent>
+                    </button>
+                  </Card>
+                ))}
+              </div>
+            </section>
+          ) : (
+            <div className="messages">
+              {messages.map(msg => (
+                <ChatMessageBubble
+                  key={msg.id}
+                  message={msg}
+                  onFormSubmit={(data) => handleFormSubmit(msg.id, data)}
+                  onHotelClick={handleHotelClick}
+                />
+              ))}
+              <div ref={bottomRef} />
+            </div>
+          )}
+        </main>
+
+        {error && (
+          <div className="error-banner">
+            <span className="error-banner-title">요청 처리 중 문제가 발생했습니다.</span>
+            <span>{error}</span>
           </div>
         )}
-      </main>
 
-      {/* 에러 배너 */}
-      {error && (
-        <div className="error-banner">
-          ⚠️ {error}
-        </div>
-      )}
-
-      {pendingFavoriteRequest && !pendingFavoriteRequest.submitted && (
-        <FavoritePanel
-          request={pendingFavoriteRequest}
-          onSubmit={handleFavoriteSubmit}
-          disabled={false}
-        />
-      )}
-
-      {/* 입력 영역 */}
-      <footer className="input-area">
-        <div className="input-inner">
-          <textarea
-            ref={inputRef}
-            className="input-box"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="여행 목적지, 날짜, 인원을 알려주세요... (Enter로 전송)"
-            rows={1}
-            disabled={isRunning || Boolean(pendingFavoriteRequest && !pendingFavoriteRequest.submitted)}
+        {pendingFavoriteRequest && !pendingFavoriteRequest.submitted && (
+          <FavoritePanel
+            request={pendingFavoriteRequest}
+            onSubmit={handleFavoriteSubmit}
+            disabled={false}
           />
-          <button
-            className={`send-btn ${isRunning ? 'stop' : 'send'}`}
-            onClick={isRunning ? stopStreaming : handleSend}
-            disabled={(!isRunning && !input.trim()) || Boolean(pendingFavoriteRequest && !pendingFavoriteRequest.submitted)}
-          >
-            {isRunning ? '■' : '↑'}
-          </button>
-        </div>
-        <div className="input-hint">
-          Shift+Enter로 줄바꿈 · Google ADK + AG-UI 미들웨어
-        </div>
-      </footer>
-    </div>
+        )}
 
-    {/* 상태 패널 사이드바 */}
-    <StatePanel
-      agentState={agentState}
-      uiContext={uiContext}
-      isOpen={statePanelOpen}
-      onToggle={() => setStatePanelOpen(prev => !prev)}
-    />
+        <footer className="input-area">
+          <div className="input-composer">
+            <Textarea
+              ref={inputRef}
+              className="input-box"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="여행 목적지, 날짜, 인원을 입력해 주세요."
+              rows={1}
+              disabled={isRunning || Boolean(pendingFavoriteRequest && !pendingFavoriteRequest.submitted)}
+            />
+            <Button
+              className={`send-btn ${isRunning ? 'stop' : 'send'}`}
+              size="icon"
+              onClick={isRunning ? stopStreaming : handleSend}
+              disabled={(!isRunning && !input.trim()) || Boolean(pendingFavoriteRequest && !pendingFavoriteRequest.submitted)}
+              aria-label={isRunning ? '응답 중단' : '메시지 전송'}
+            >
+              {isRunning ? <Square size={16} /> : <ArrowUp size={18} />}
+            </Button>
+          </div>
+          <div className="input-meta">
+            <span>Shift+Enter 줄바꿈</span>
+            {isRunning ? (
+              <span className="input-running"><LoaderCircle size={14} className="spin" />에이전트 응답 생성 중</span>
+            ) : (
+              <span>필요한 정보가 부족하면 추가 입력을 요청합니다.</span>
+            )}
+          </div>
+        </footer>
+      </div>
+
+      <Dialog open={stateViewerOpen} onOpenChange={setStateViewerOpen}>
+        <DialogContent className="state-dialog" closeLabel="상태 뷰어 닫기">
+          <DialogHeader>
+            <DialogTitle>상태 뷰어</DialogTitle>
+            <DialogDescription>
+              현재 대화 컨텍스트와 에이전트 상태를 확인할 수 있습니다.
+            </DialogDescription>
+          </DialogHeader>
+          <StatePanel agentState={agentState} uiContext={uiContext} />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

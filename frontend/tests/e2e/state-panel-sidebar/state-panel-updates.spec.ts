@@ -22,8 +22,11 @@ test.describe('StatePanel Update Flow', () => {
     // 3. 호텔 클릭
     await hotelCard.click();
 
+    await page.getByRole('button', { name: '상태 보기' }).click();
+    await expect(page.getByRole('dialog', { name: '상태 뷰어' })).toBeVisible();
+
     // 4. StatePanel의 selected_hotel 필드 확인
-    const hotelField = page.locator('.sp-field', { hasText: 'selected_hotel' });
+    const hotelField = page.locator('.sp-field', { hasText: '선택 호텔' });
     const value = hotelField.locator('.sp-field-value');
     await expect(value).not.toHaveText('-');
     
@@ -31,7 +34,7 @@ test.describe('StatePanel Update Flow', () => {
     await expect(hotelField).toHaveClass(/sp-highlight-client/);
     
     // 6. current_view 업데이트 확인
-    const viewField = page.locator('.sp-field', { hasText: 'current_view' });
+    const viewField = page.locator('.sp-field', { hasText: '현재 화면' });
     await expect(viewField.locator('.sp-field-value')).toHaveText('hotel_detail');
   });
 
@@ -39,8 +42,11 @@ test.describe('StatePanel Update Flow', () => {
     await page.fill(selectors.inputBox, '도쿄 2명 6월 10일 호텔');
     await page.click(selectors.sendButton);
 
+    await page.getByRole('button', { name: '상태 보기' }).click();
+    await expect(page.getByRole('dialog', { name: '상태 뷰어' })).toBeVisible();
+
     // StatePanel의 destination 필드가 '도쿄'로 변하는지 대기
-    const destField = page.locator('.sp-field', { hasText: 'destination' });
+    const destField = page.locator('.sp-field', { hasText: '도착지' });
     await expect(destField.locator('.sp-field-value')).toHaveText('도쿄', { timeout: 10000 });
     
     // 서버 하이라이트 클래스 확인
@@ -75,6 +81,9 @@ test.describe('StatePanel Update Flow', () => {
 
     await page.fill(selectors.inputBox, '오사카 호텔 찾아줘');
     await page.click(selectors.sendButton);
+
+    await page.getByRole('button', { name: '상태 보기' }).click();
+    await expect(page.getByRole('dialog', { name: '상태 뷰어' })).toBeVisible();
 
     const destinationField = page.locator('.sp-field', { hasText: '도착지' });
     await expect(destinationField.locator('.sp-field-value')).toHaveText('오사카');

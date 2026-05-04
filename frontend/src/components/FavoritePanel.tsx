@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { FavoriteRequest, FavoriteOptionDef } from '../types'
+import { Button } from './ui/button'
+import { Badge } from './ui/badge'
 
 interface Props {
   request: FavoriteRequest
@@ -35,8 +37,11 @@ export function FavoritePanel({ request, onSubmit, disabled }: Props) {
   return (
     <div className="favorite-panel">
       <div className="favorite-panel-header">
-        <span className="favorite-panel-title">{title} 선택</span>
-        <span className="favorite-panel-hint">선택 사항 · 원하는 항목만 골라주세요</span>
+        <div>
+          <span className="favorite-panel-title">{title} 선호도</span>
+          <span className="favorite-panel-hint">원하는 항목만 골라 저장할 수 있습니다.</span>
+        </div>
+        <Badge variant="outline">선택 사항</Badge>
       </div>
       <div className="favorite-panel-body">
         {Object.entries(request.options).map(([fieldName, optDef]: [string, FavoriteOptionDef]) => (
@@ -77,14 +82,14 @@ export function FavoritePanel({ request, onSubmit, disabled }: Props) {
         ))}
       </div>
       <div className="favorite-panel-footer">
-        <button
+        <Button
           type="button"
           className="favorite-confirm-btn"
           onClick={handleConfirm}
           disabled={disabled}
         >
-          확인
-        </button>
+          저장
+        </Button>
       </div>
     </div>
   )

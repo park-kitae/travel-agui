@@ -1,5 +1,8 @@
+import { ReactNode } from 'react'
+import { BedDouble, CircleDollarSign, MapPin, Phone, Plane, Sparkles, Star } from 'lucide-react'
 import { Hotel, Flight, ToolResultSnapshot, HotelSearchResult, FlightSearchResult, TravelTipsResult, HotelDetailResult, RoomType } from '../types'
-// hotel click enabled
+import { Badge } from './ui/badge'
+
 interface Props {
   snapshot: ToolResultSnapshot
   onHotelClick?: (hotelCode: string, hotelName: string) => void
@@ -23,31 +26,36 @@ export function ToolResultCard({ snapshot, onHotelClick }: Props) {
   return null
 }
 
-// ── 호텔 카드 ──────────────────────────────────
+function HeaderMeta({ icon, title, meta }: { icon: ReactNode; title: string; meta?: string }) {
+  return (
+    <div className="tool-card-header">
+      <div className="tool-icon">{icon}</div>
+      <div className="tool-card-header-body">
+        <span className="tool-title">{title}</span>
+        {meta ? <span className="tool-meta">{meta}</span> : null}
+      </div>
+    </div>
+  )
+}
+
 function HotelCard({ data, onHotelClick }: { data: HotelSearchResult; onHotelClick?: (hotelCode: string, hotelName: string) => void }) {
   if (data.status !== 'success' || !data.hotels?.length) return null
   return (
     <div className="tool-card hotel-result-card">
-      <div className="tool-card-header">
-        <span className="tool-icon">🏨</span>
-        <span className="tool-title">
-          {data.city} 호텔 검색결과
-        </span>
-        <span className="tool-meta">
-          {data.check_in} ~ {data.check_out} · {data.guests}명
-        </span>
-      </div>
+      <HeaderMeta
+        icon={<BedDouble size={18} />}
+        title={`${data.city} 호텔 검색 결과`}
+        meta={`${data.check_in} - ${data.check_out} · ${data.guests}명`}
+      />
       {onHotelClick && (
         <div className="hotel-scroll-hint">
-          <span className="scroll-hint-icon">←</span>
-          <span>좌우로 스크롤하여 더 많은 호텔을 확인하세요</span>
-          <span className="scroll-hint-icon">→</span>
+          <span>카드를 선택하면 상세 정보를 이어서 확인할 수 있습니다.</span>
         </div>
       )}
       <div className="hotel-scroll-container">
         <div className="hotel-scroll-track">
-          {data.hotels!.map((h, i) => (
-            <HotelItem key={i} hotel={h} onHotelClick={onHotelClick} index={i} />
+          {data.hotels.map((h, i) => (
+            <HotelItem key={i} hotel={h} onHotelClick={onHotelClick} />
           ))}
         </div>
       </div>
@@ -55,78 +63,70 @@ function HotelCard({ data, onHotelClick }: { data: HotelSearchResult; onHotelCli
   )
 }
 
-function HotelItem({ hotel, onHotelClick, index }: { hotel: Hotel; onHotelClick?: (hotelCode: string, hotelName: string) => void; index: number }) {
+function HotelItem({ hotel, onHotelClick }: { hotel: Hotel; onHotelClick?: (hotelCode: string, hotelName: string) => void }) {
   const clickable = !!onHotelClick
-  const gradients = [
-    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-    'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-    'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-    'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-  ]
-  const gradient = gradients[index % gradients.length]
-
   return (
     <div
-      className={`hotel-card${clickable ? ' clickable' : ''}`}
+      className={`hotel-card hotel-item${clickable ? ' clickable clickable-hotel' : ''}`}
       onClick={clickable ? () => onHotelClick(hotel.hotel_code, hotel.name) : undefined}
     >
       <div className="hotel-card-image">
-        <div className="hotel-image-placeholder" style={{ background: gradient }}>
-          <span className="hotel-emoji">🏨</span>
+        <div className="hotel-image-placeholder">
+          <div className="hotel-image-overlay" />
+          <div className="hotel-image-copy">
+            <Badge variant="secondary">{hotel.area}</Badge>
+            <div className="hotel-stars-badge">{'★'.repeat(hotel.stars)}</div>
+          </div>
         </div>
-        <div className="hotel-stars-badge">{'★'.repeat(hotel.stars)}</div>
-        {clickable && <div className="hotel-hover-overlay">상세 보기 →</div>}
       </div>
       <div className="hotel-card-content">
         <div className="hotel-card-main">
-          <h4 className="hotel-card-name">{hotel.name}</h4>
-          <p className="hotel-card-area">{hotel.area}</p>
+          <h4 className="hotel-card-name hotel-name">{hotel.name}</h4>
+          <p className="hotel-card-area hotel-area">{hotel.area}</p>
         </div>
         <div className="hotel-card-stats">
-          <div className="hotel-stat-item">
-            <span className="hotel-stat-icon">⭐</span>
+          <div className="hotel-stat-item hotel-rating">
+            <Star size={13} />
             <span className="hotel-stat-value">{hotel.rating}</span>
           </div>
           <div className="hotel-stat-item">
-            <span className="hotel-stat-icon">🎯</span>
+            <Sparkles size={13} />
             <span className="hotel-stat-value">{hotel.stars}성급</span>
           </div>
         </div>
-        <div className="hotel-card-price">
-          <span className="price-value">{hotel.price.toLocaleString()}</span>
-          <span className="price-unit">원/박</span>
+        <div className="hotel-footer">
+          <div className="hotel-card-price hotel-price">
+            <span className="price-value">{hotel.price.toLocaleString()}</span>
+            <span className="price-unit">원 / 박</span>
+          </div>
+          {clickable ? <span className="hotel-detail-cta">상세 보기</span> : null}
         </div>
       </div>
     </div>
   )
 }
 
-// ── 호텔 상세 카드 ─────────────────────────────
 function HotelDetailCard({ data }: { data: HotelDetailResult }) {
   if (data.status !== 'success') return null
   return (
     <div className="tool-card hotel-detail-card">
-      <div className="tool-card-header">
-        <span className="tool-icon">🏨</span>
-        <div className="hotel-detail-header-body">
-          <span className="tool-title">{data.name}</span>
-          <span className="hotel-detail-stars">{'★'.repeat(data.stars ?? 0)}{'☆'.repeat(5 - (data.stars ?? 0))}</span>
-        </div>
-        <span className="tool-meta">{data.city} · {data.area}</span>
-      </div>
+      <HeaderMeta
+        icon={<BedDouble size={18} />}
+        title={data.name ?? '호텔 상세'}
+        meta={`${data.city} · ${data.area}`}
+      />
 
       <div className="hotel-detail-meta-row">
-        <span className="hotel-detail-rating">⭐ {data.rating} / 5.0</span>
-        <span className="hotel-detail-address">📍 {data.address}</span>
-        <span className="hotel-detail-phone">📞 {data.phone}</span>
+        <span className="hotel-detail-rating"><Star size={14} /> {data.rating} / 5.0</span>
+        <span className="hotel-detail-address"><MapPin size={14} /> {data.address}</span>
+        <span className="hotel-detail-phone"><Phone size={14} /> {data.phone}</span>
       </div>
 
       <div className="hotel-detail-description">{data.description}</div>
 
       {data.highlights && data.highlights.length > 0 && (
         <div className="hotel-detail-section">
-          <div className="hotel-detail-section-title">✨ 주요 특징</div>
+          <div className="hotel-detail-section-title">주요 특징</div>
           <div className="hotel-highlights">
             {data.highlights.map((h, i) => (
               <span key={i} className="hotel-highlight-tag">{h}</span>
@@ -137,7 +137,7 @@ function HotelDetailCard({ data }: { data: HotelDetailResult }) {
 
       {data.room_types && data.room_types.length > 0 && (
         <div className="hotel-detail-section">
-          <div className="hotel-detail-section-title">🛏️ 객실 타입</div>
+          <div className="hotel-detail-section-title">객실 타입</div>
           <div className="hotel-room-grid">
             {data.room_types.map((room, i) => (
               <RoomTypeItem key={i} room={room} />
@@ -148,7 +148,7 @@ function HotelDetailCard({ data }: { data: HotelDetailResult }) {
 
       {data.amenities && data.amenities.length > 0 && (
         <div className="hotel-detail-section">
-          <div className="hotel-detail-section-title">🎯 편의시설</div>
+          <div className="hotel-detail-section-title">편의시설</div>
           <div className="hotel-amenities">
             {data.amenities.map((a, i) => (
               <span key={i} className="hotel-amenity-tag">{a}</span>
@@ -191,7 +191,6 @@ function RoomTypeItem({ room }: { room: RoomType }) {
   )
 }
 
-// ── 항공 카드 ──────────────────────────────────
 function FlightCard({ data }: { data: FlightSearchResult }) {
   if (data.status !== 'success') return null
 
@@ -204,15 +203,11 @@ function FlightCard({ data }: { data: FlightSearchResult }) {
 
   return (
     <div className="tool-card">
-      <div className="tool-card-header">
-        <span className="tool-icon">✈️</span>
-        <span className="tool-title">
-          {data.origin} ↔ {data.destination} {isRoundTrip ? '왕복' : '편도'}
-        </span>
-        <span className="tool-meta">
-          {data.departure_date} {isRoundTrip && data.return_date && `~ ${data.return_date}`} · {data.passengers}명
-        </span>
-      </div>
+      <HeaderMeta
+        icon={<Plane size={18} />}
+        title={`${data.origin} ↔ ${data.destination} ${isRoundTrip ? '왕복' : '편도'}`}
+        meta={`${data.departure_date}${isRoundTrip && data.return_date ? ` ~ ${data.return_date}` : ''} · ${data.passengers}명`}
+      />
 
       {isRoundTrip ? (
         <>
@@ -240,7 +235,7 @@ function FlightCard({ data }: { data: FlightSearchResult }) {
         </>
       ) : (
         <div className="flight-list">
-          {data.flights!.map((f, i) => (
+          {data.flights?.map((f, i) => (
             <FlightItem key={i} flight={f} />
           ))}
         </div>
@@ -261,7 +256,7 @@ function FlightItem({ flight }: { flight: Flight }) {
         <span className="flight-time">{flight.depart}</span>
         <span className="flight-arrow">
           <span className="flight-duration">{flight.duration}</span>
-          <span className="flight-line">──────✈</span>
+          <span className="flight-line">──────</span>
         </span>
         <span className="flight-time">{flight.arrive}</span>
       </div>
@@ -270,40 +265,39 @@ function FlightItem({ flight }: { flight: Flight }) {
   )
 }
 
-// ── 여행 팁 카드 ──────────────────────────────
 function TipsCard({ data }: { data: TravelTipsResult }) {
   if (data.status !== 'success') return null
   return (
     <div className="tool-card">
-      <div className="tool-card-header">
-        <span className="tool-icon">🗺️</span>
-        <span className="tool-title">{data.destination} 여행 정보</span>
-        <span className="tool-meta">{data.best_season}</span>
-      </div>
+      <HeaderMeta
+        icon={<Sparkles size={18} />}
+        title={`${data.destination} 여행 정보`}
+        meta={data.best_season}
+      />
       <p className="tips-overview">{data.overview}</p>
       <div className="tips-grid">
-        {data.spots?.length && (
+        {Boolean(data.spots?.length) && (
           <div className="tips-section">
-            <div className="tips-section-title">📍 주요 관광지</div>
-            <ul>{data.spots.map((s, i) => <li key={i}>{s}</li>)}</ul>
+            <div className="tips-section-title">주요 관광지</div>
+            <ul>{data.spots?.map((s, i) => <li key={i}>{s}</li>)}</ul>
           </div>
         )}
-        {data.food?.length && (
+        {Boolean(data.food?.length) && (
           <div className="tips-section">
-            <div className="tips-section-title">🍜 추천 음식</div>
-            <ul>{data.food.map((f, i) => <li key={i}>{f}</li>)}</ul>
+            <div className="tips-section-title">추천 음식</div>
+            <ul>{data.food?.map((f, i) => <li key={i}>{f}</li>)}</ul>
           </div>
         )}
-        {data.tips?.length && (
+        {Boolean(data.tips?.length) && (
           <div className="tips-section">
-            <div className="tips-section-title">💡 여행 팁</div>
-            <ul>{data.tips.map((t, i) => <li key={i}>{t}</li>)}</ul>
+            <div className="tips-section-title">여행 팁</div>
+            <ul>{data.tips?.map((t, i) => <li key={i}>{t}</li>)}</ul>
           </div>
         )}
       </div>
       <div className="tips-meta-row">
-        <span>💱 {data.currency}</span>
-        <span>🗣️ {data.language}</span>
+        <span><CircleDollarSign size={14} /> {data.currency}</span>
+        <span><Sparkles size={14} /> {data.language}</span>
       </div>
     </div>
   )

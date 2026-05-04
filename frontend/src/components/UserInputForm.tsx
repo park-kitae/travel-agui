@@ -1,5 +1,6 @@
 import { useState, FormEvent } from 'react'
 import { FormField } from '../types'
+import { Button } from './ui/button'
 
 interface Props {
   fields: FormField[]
@@ -17,8 +18,6 @@ export function UserInputForm({ fields, onSubmit, disabled }: Props) {
     return initial
   })
 
-  console.log('[UserInputForm] 렌더링, 초기값:', formData)
-
   const handleChange = (name: string, value: string) => {
     setFormData(prev => ({ ...prev, [name]: value }))
   }
@@ -35,7 +34,6 @@ export function UserInputForm({ fields, onSubmit, disabled }: Props) {
       }
     }
 
-    console.log('[UserInputForm] 제출 데이터:', formData)
     onSubmit(formData)
   }
 
@@ -52,14 +50,14 @@ export function UserInputForm({ fields, onSubmit, disabled }: Props) {
           </div>
         ))}
       </div>
-      <button
+      <Button
         type="submit"
         className="form-submit-btn"
         disabled={disabled}
-        onClick={() => console.log('[UserInputForm] 버튼 클릭됨')}
+        variant="default"
       >
-        제출
-      </button>
+        요청 전송
+      </Button>
     </form>
   )
 }
