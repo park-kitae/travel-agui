@@ -32,3 +32,5 @@ logs/
 
 # ── Playwright MCP ───────────────────────────────
 .playwright-mcp/
+.agents/
+docs
