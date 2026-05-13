@@ -48,3 +48,39 @@ def test_sub_agents_allow_transfer_back():
     for sa in agent.sub_agents:
         assert sa.disallow_transfer_to_parent is False
         assert sa.disallow_transfer_to_peers is False
+
+
+def test_coordinator_instruction_is_compact_and_route_focused():
+    agent = create_travel_agent()
+    instruction = agent.instruction
+
+    assert "hotel_agent" in instruction
+    assert "flight_agent" in instruction
+    assert "request_user_favorite" in instruction
+    assert "get_travel_tips" in instruction
+    assert "기본 출발 제안일" not in instruction
+    assert "오늘로부터 1주일 후" not in instruction
+    assert "시나리오 예시" not in instruction
+
+
+def test_hotel_agent_instruction_is_tool_focused():
+    agent = create_travel_agent()
+    hotel_agent = next(sa for sa in agent.sub_agents if sa.name == "hotel_agent")
+    instruction = hotel_agent.instruction
+
+    assert "search_hotels" in instruction
+    assert "get_hotel_detail" in instruction
+    assert 'request_user_input("hotel_booking_details"' in instruction
+    assert "시나리오 예시" not in instruction
+    assert '"check_in":"YYYY-MM-DD"' not in instruction
+
+
+def test_flight_agent_instruction_is_tool_focused():
+    agent = create_travel_agent()
+    flight_agent = next(sa for sa in agent.sub_agents if sa.name == "flight_agent")
+    instruction = flight_agent.instruction
+
+    assert "search_flights" in instruction
+    assert 'request_user_input("flight_booking_details"' in instruction
+    assert "시나리오 예시" not in instruction
+    assert '"departure_date":"YYYY-MM-DD"' not in instruction
