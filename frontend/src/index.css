@@ -718,6 +718,71 @@ button, input, select, textarea {
   color: #8b6730;
 }
 
+.a2ui-area {
+  padding: 24px 28px 28px;
+  border-top: 1px solid rgba(21, 49, 76, 0.08);
+  background: rgba(248, 244, 239, 0.82);
+}
+
+.a2ui-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.a2ui-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--brand);
+}
+
+.a2ui-description {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.a2ui-panel {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 22px;
+  background: var(--surface-strong);
+  border: 1px solid rgba(21, 49, 76, 0.08);
+}
+
+.a2ui-panel.empty {
+  min-height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.a2ui-empty-state {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.a2ui-empty-state strong {
+  display: block;
+  font-size: 16px;
+  color: var(--brand);
+  margin-bottom: 6px;
+}
+
+.a2ui-surface-wrapper {
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-sm);
+}
+
 .tips-meta-row {
   display: flex;
   flex-wrap: wrap;

@@ -350,6 +350,7 @@ export interface ChatMessage {
   timestamp: Date
   currentStep?: string
   userInputRequest?: UserInputRequest
+  a2uiSurfaceIds?: string[]
 }
 
 // 사용자 입력 요청 상태

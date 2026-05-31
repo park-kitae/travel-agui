@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { ArrowUp, LoaderCircle, PanelRightOpen, RotateCcw, Square } from 'lucide-react'
 import { useAGUIChat } from './hooks/useAGUIChat'
+import { useA2UIProcessor } from './hooks/useA2UIProcessor'
 import { ChatMessageBubble } from './components/ChatMessageBubble'
 import { StatePanel } from './components/StatePanel'
 import { FavoritePanel } from './components/FavoritePanel'
@@ -28,6 +29,7 @@ export default function App() {
   const [stateViewerOpen, setStateViewerOpen] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const { surfaces } = useA2UIProcessor()
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -189,6 +191,7 @@ export default function App() {
                 <ChatMessageBubble
                   key={msg.id}
                   message={msg}
+                  availableA2uiSurfaces={surfaces}
                   onFormSubmit={(data) => handleFormSubmit(msg.id, data)}
                   onHotelClick={handleHotelClick}
                 />
