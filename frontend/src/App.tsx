@@ -10,6 +10,7 @@ import { Badge } from './components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './components/ui/dialog'
 import { Textarea } from './components/ui/textarea'
+import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
 const SUGGESTIONS = [
   '도쿄 호텔 추천해줘 (6월 10일~14일, 2명)',
@@ -19,17 +20,37 @@ const SUGGESTIONS = [
 ]
 
 export default function App() {
+  const submitFavoriteActionRef = useRef<(action: A2uiClientAction) => void>()
+  const { surfaces, processMessages } = useA2UIProcessor(action => {
+    submitFavoriteActionRef.current?.(action)
+  })
   const {
     messages, isRunning, error, agentState, uiContext, updateUiContext,
     pendingFavoriteRequest,
     sendMessage, interruptAndSend, stopStreaming, clearMessages,
     markFormSubmitted, submitFavorite,
-  } = useAGUIChat()
+  } = useAGUIChat({ processA2uiMessages: processMessages as (messages: unknown[]) => void })
   const [input, setInput] = useState('')
   const [stateViewerOpen, setStateViewerOpen] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const { surfaces } = useA2UIProcessor()
+
+  submitFavoriteActionRef.current = action => {
+    if (action.name !== 'submit_favorite_preferences') return
+    const favoriteType = action.context.favoriteType
+    if (favoriteType !== 'hotel_preference' && favoriteType !== 'flight_preference') return
+
+    const selections = Object.fromEntries(
+      Object.entries(action.context).filter(([key]) => key !== 'requestId' && key !== 'favoriteType')
+    ) as Record<string, string | string[]>
+
+    submitFavorite({
+      requestId: typeof action.context.requestId === 'string' ? action.context.requestId : 'a2ui-favorite',
+      favoriteType,
+      options: {},
+      submitted: false,
+    }, selections)
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })

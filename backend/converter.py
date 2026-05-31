@@ -16,7 +16,7 @@ from ag_ui.core.events import (
 )
 from ag_ui.encoder.encoder import EventEncoder
 
-from models import UserInputRequestEvent, UserFavoriteRequestEvent
+from models import A2UIMessageEvent, UserInputRequestEvent, UserFavoriteRequestEvent
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +148,17 @@ async def a2a_to_agui_stream(
                             yield encoder.encode(event_data)
                         except Exception as e:
                             logger.warning(f"UserFavoriteRequest 직렬화 실패: {e}")
+
+                    elif agui_event == "A2UI_MESSAGE":
+                        try:
+                            yield encoder.encode(A2UIMessageEvent(
+                                surface_id=data.get("surface_id", ""),
+                                request_id=data.get("request_id"),
+                                favorite_type=data.get("favorite_type"),
+                                messages=data.get("messages", []),
+                            ))
+                        except Exception as e:
+                            logger.warning(f"A2UIMessage 吏곷젹???ㅽ뙣: {e}")
 
                     elif agui_event == "STATE_DELTA":
                         try:

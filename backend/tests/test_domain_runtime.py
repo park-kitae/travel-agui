@@ -251,6 +251,21 @@ def test_runtime_ui_request_payload_maps_to_current_stream_contract():
     }
 
 
+def test_runtime_ui_request_payload_maps_a2ui_message_to_current_stream_contract():
+    payload = map_runtime_emission_to_payload(
+        RuntimeUiRequestPayload(
+            event_name="A2UI_MESSAGE",
+            payload={"surface_id": "favorite-req-1", "messages": [{"version": "v0.9"}]},
+        )
+    )
+
+    assert payload == {
+        "_agui_event": "A2UI_MESSAGE",
+        "surface_id": "favorite-req-1",
+        "messages": [{"version": "v0.9"}],
+    }
+
+
 def test_runtime_ui_request_payload_rejects_unsupported_event_name():
     with pytest.raises(ValueError, match="Unsupported UI event name"):
         map_runtime_emission_to_payload(

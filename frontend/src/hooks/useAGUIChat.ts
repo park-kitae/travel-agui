@@ -10,6 +10,7 @@ import {
   UserPreferences,
     DEFAULT_SESSION_PREFS,
     isAgentStateSnapshot,
+    isA2UIMessageEvent,
     isStateDeltaEvent,
     isUserInputRequestEvent,
     isUserFavoriteRequestEvent,
@@ -19,11 +20,15 @@ import { useChatMessages } from './useChatMessages'
 
 const AGUI_ENDPOINT = '/agui/run'
 
+interface UseAGUIChatOptions {
+  processA2uiMessages?: (messages: unknown[]) => void
+}
+
 function generateId() {
   return Math.random().toString(36).slice(2, 10)
 }
 
-export function useAGUIChat() {
+export function useAGUIChat(options: UseAGUIChatOptions = {}) {
   const [isRunning, setIsRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const threadIdRef = useRef<string>(generateId())
@@ -147,6 +152,7 @@ export function useAGUIChat() {
             applyAgentStateSnapshot,
             applyAgentStateDelta,
             setPendingFavoriteRequest,
+            options.processA2uiMessages,
           )
         }
       }
@@ -161,7 +167,7 @@ export function useAGUIChat() {
       setIsRunning(false)
       isRunningRef.current = false
     }
-  }, [messages, agentState, uiContext, updateMessage, addMessage, applyAgentStateSnapshot, applyAgentStateDelta, setPendingFavoriteRequest])
+  }, [messages, agentState, uiContext, updateMessage, addMessage, applyAgentStateSnapshot, applyAgentStateDelta, setPendingFavoriteRequest, options.processA2uiMessages])
 
   const stopStreaming = useCallback(() => {
     abortRef.current?.abort()
@@ -268,6 +274,7 @@ function handleEvent(
   applyAgentStateSnapshot: (s: AgentStateSnapshot) => void,
   applyAgentStateDelta: (delta: { op: 'add' | 'remove' | 'replace'; path: string; value?: unknown }[]) => void,
   setPendingFavoriteRequest: (value: FavoriteRequest | null) => void,
+  processA2uiMessages?: (messages: unknown[]) => void,
 ) {
   switch (event.type) {
     case 'TEXT_MESSAGE_CHUNK': {
@@ -366,6 +373,16 @@ function handleEvent(
         options: event.options,
         submitted: false,
       })
+      break
+    }
+
+    case 'A2UI_MESSAGE': {
+      if (!isA2UIMessageEvent(event)) break
+      processA2uiMessages?.(event.messages)
+      updateMessage(assistantId, m => ({
+        ...m,
+        a2uiSurfaceIds: Array.from(new Set([...(m.a2uiSurfaceIds ?? []), event.surfaceId])),
+      }))
       break
     }
   }

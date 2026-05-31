@@ -19,7 +19,7 @@ from state.store import SerializedStateStore
 
 
 _RUNTIME: DomainRuntime | None = None
-_SUPPORTED_UI_EVENT_NAMES = frozenset({"USER_INPUT_REQUEST", "USER_FAVORITE_REQUEST"})
+_SUPPORTED_UI_EVENT_NAMES = frozenset({"USER_INPUT_REQUEST", "USER_FAVORITE_REQUEST", "A2UI_MESSAGE"})
 
 
 @dataclass(frozen=True, slots=True)

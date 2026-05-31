@@ -21,3 +21,13 @@ class UserFavoriteRequestEvent(BaseModel):
     request_id: str = Field(..., alias="requestId", description="요청 ID")
     favorite_type: str = Field(..., alias="favoriteType", description="취향 타입: hotel_preference | flight_preference")
     options: dict = Field(..., description="취향 옵션 정의 {field_name: {type, label, choices}}")
+
+class A2UIMessageEvent(BaseModel):
+    """A2UI v0.9 message payload event."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: Literal["A2UI_MESSAGE"] = "A2UI_MESSAGE"
+    surface_id: str = Field(..., alias="surfaceId")
+    request_id: str | None = Field(default=None, alias="requestId")
+    favorite_type: str | None = Field(default=None, alias="favoriteType")
+    messages: list[dict] = Field(default_factory=list)

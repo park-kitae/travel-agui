@@ -15,6 +15,7 @@ export type AGUIEventType =
   | 'STATE_SNAPSHOT'
   | 'USER_INPUT_REQUEST'
   | 'USER_FAVORITE_REQUEST'
+  | 'A2UI_MESSAGE'
 
 export interface AGUIEvent {
   type: AGUIEventType
@@ -113,6 +114,14 @@ export interface UserFavoriteRequestEvent extends AGUIEvent {
   requestId: string
   favoriteType: FavoriteType
   options: Record<string, FavoriteOptionDef>
+}
+
+export interface A2UIMessageEvent extends AGUIEvent {
+  type: 'A2UI_MESSAGE'
+  surfaceId: string
+  requestId?: string
+  favoriteType?: FavoriteType
+  messages: unknown[]
 }
 
 // 취향 요청 상태 (훅에서 관리)
@@ -379,6 +388,10 @@ export function isUserInputRequestEvent(e: AGUIEvent): e is UserInputRequestEven
 
 export function isUserFavoriteRequestEvent(e: AGUIEvent): e is UserFavoriteRequestEvent {
   return e.type === 'USER_FAVORITE_REQUEST'
+}
+
+export function isA2UIMessageEvent(e: AGUIEvent): e is A2UIMessageEvent {
+  return e.type === 'A2UI_MESSAGE' && Array.isArray((e as A2UIMessageEvent).messages)
 }
 
 export function isStateDeltaEvent(e: AGUIEvent): e is StateDeltaEvent {

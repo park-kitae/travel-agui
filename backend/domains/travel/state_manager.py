@@ -84,7 +84,13 @@ def _runtime_emission_to_agui_event(emission):
     if "ops" in payload:
         return StateDeltaEvent(type=EventType.STATE_DELTA, delta=payload["ops"])
     snapshot = payload.get("snapshot") or {}
-    if payload.get("event_name") == "USER_FAVORITE_REQUEST":
+    if payload.get("event_name") == "A2UI_MESSAGE":
+        snapshot = {
+            "snapshot_type": "a2ui_message",
+            "_agui_event": "A2UI_MESSAGE",
+            **payload.get("payload", {}),
+        }
+    elif payload.get("event_name") == "USER_FAVORITE_REQUEST":
         snapshot = {
             "snapshot_type": "user_favorite_request",
             "_agui_event": "USER_FAVORITE_REQUEST",

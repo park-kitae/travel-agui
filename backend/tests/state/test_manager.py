@@ -318,16 +318,13 @@ def test_apply_tool_result_request_user_favorite_yields_favorite_request():
     repeated_payload = repeated_emissions[0]
     assert isinstance(first_payload, RuntimeUiRequestPayload)
     assert isinstance(repeated_payload, RuntimeUiRequestPayload)
-    assert first_payload.event_name == "USER_FAVORITE_REQUEST"
-    assert first_payload.payload == {
-        "request_id": first_payload.payload["request_id"],
-        "favorite_type": "hotel_preference",
-        "options": result["options"],
-    }
+    assert first_payload.event_name == "A2UI_MESSAGE"
     assert first_payload.payload["request_id"]
     assert repeated_payload.payload["request_id"] == first_payload.payload["request_id"]
     assert first_payload.payload["favorite_type"] == "hotel_preference"
-    assert "hotel_grade" in first_payload.payload["options"]
+    assert first_payload.payload["surface_id"].startswith("favorite-")
+    assert first_payload.payload["messages"][0]["version"] == "v0.9"
+    assert first_payload.payload["messages"][0]["createSurface"]["surfaceId"] == first_payload.payload["surface_id"]
 
 
 def test_apply_tool_call_request_user_favorite_sets_awaiting_intent():

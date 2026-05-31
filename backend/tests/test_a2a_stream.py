@@ -446,7 +446,7 @@ async def test_runtime_backed_executor_stream_emits_user_input_request_event():
 
 
 @pytest.mark.asyncio
-async def test_runtime_backed_executor_stream_emits_user_favorite_request_event():
+async def test_runtime_backed_executor_stream_emits_a2ui_message_for_user_favorite_request():
     events = await execute_and_collect_stream(
         [
             make_function_response_adk_event(
@@ -460,6 +460,9 @@ async def test_runtime_backed_executor_stream_emits_user_favorite_request_event(
         ]
     )
 
-    favorite_event = next(event for event in events if event["type"] == "USER_FAVORITE_REQUEST")
-    assert favorite_event["favoriteType"] == "hotel_preference"
-    assert favorite_event["options"] == {"hotel_grade": {"choices": ["4성", "5성"]}}
+    assert "USER_FAVORITE_REQUEST" not in [event["type"] for event in events]
+    a2ui_event = next(event for event in events if event["type"] == "A2UI_MESSAGE")
+    assert a2ui_event["surfaceId"].startswith("favorite-")
+    assert a2ui_event["favoriteType"] == "hotel_preference"
+    assert a2ui_event["messages"][0]["version"] == "v0.9"
+    assert a2ui_event["messages"][0]["createSurface"]["surfaceId"] == a2ui_event["surfaceId"]

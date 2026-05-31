@@ -9,6 +9,7 @@ from datetime import date
 from typing import Any
 
 from domains import RuntimeDeltaPayload, RuntimeEmission, RuntimeSnapshotPayload, RuntimeUiRequestPayload
+from domains.travel.a2ui import build_favorite_a2ui_payload
 
 
 @dataclass(frozen=True)
@@ -197,13 +198,16 @@ def apply_tool_result(
             "favorite_type": result_payload.get("favorite_type", ""),
             "options": result_payload.get("options", {}),
         }
+        request_id = _build_request_id(tool_name, ui_payload)
+        a2ui_payload = build_favorite_a2ui_payload(
+            request_id=request_id,
+            favorite_type=ui_payload["favorite_type"],
+            options=ui_payload["options"],
+        )
         return current_state, [
             RuntimeUiRequestPayload(
-                event_name="USER_FAVORITE_REQUEST",
-                payload={
-                    "request_id": _build_request_id(tool_name, ui_payload),
-                    **ui_payload,
-                },
+                event_name="A2UI_MESSAGE",
+                payload=a2ui_payload,
             )
         ]
 
