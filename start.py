@@ -13,6 +13,7 @@ import signal
 import time
 import threading
 import urllib.request
+import argparse
 
 IS_WINDOWS = platform.system() == "Windows"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -160,11 +161,23 @@ def get_npm_cmd():
 def main():
     global backend_proc, gateway_proc, frontend_proc
 
+    parser = argparse.ArgumentParser(
+        description="Travel AI 서버 시작 스크립트"
+    )
+    parser.add_argument(
+        "--desktop",
+        action="store_true",
+        help="Tauri 데스크톱 앱(윈도우)으로 실행 (npm run tauri:dev)",
+    )
+    args = parser.parse_args()
+    desktop_mode = args.desktop
+
     signal.signal(signal.SIGINT, cleanup)
     if not IS_WINDOWS:
         signal.signal(signal.SIGTERM, cleanup)
 
-    print("🚀 Travel AI 서버 시작 중...")
+    mode_label = "🖥️  데스크톱 앱 모드" if desktop_mode else "🌐 웹 모드"
+    print(f"🚀 Travel AI 서버 시작 중... ({mode_label})")
     print(f"   OS: {platform.system()} {platform.release()}")
     print()
 
@@ -237,8 +250,6 @@ def main():
     print()
 
     # ── 5. 프론트엔드 서버 시작 ──────────────
-    print("🎨 프론트엔드 개발 서버 시작 중... (포트 5173)")
-
     frontend_dir = os.path.join(SCRIPT_DIR, "frontend")
     if not os.path.isdir(os.path.join(frontend_dir, "node_modules")):
         print("⚠️  node_modules가 없습니다. npm install을 실행합니다...")
@@ -249,23 +260,49 @@ def main():
             shell=IS_WINDOWS,
         )
 
-    with open("logs/frontend.log", "w", encoding="utf-8") as log:
-        frontend_proc = subprocess.Popen(
-            [get_npm_cmd(), "run", "dev"],
-            cwd=frontend_dir,
-            stdout=log,
-            stderr=log,
-            shell=IS_WINDOWS,
-        )
-    print(f"✅ 프론트엔드 서버 시작됨 (PID: {frontend_proc.pid})")
-    print()
+    if desktop_mode:
+        # 데스크톱 모드: Tauri가 프론트엔드 dev 서버를 beforeDevCommand로 자동 실행
+        print("🖥️  Tauri 데스크톱 앱 시작 중... (frontend dev 서버 자동 실행)")
 
-    print("⏳ 프론트엔드 서버 준비 중...")
-    if not wait_for_url("http://localhost:5173", max_tries=15):
-        print("❌ 프론트엔드 서버 시작 실패. logs/frontend.log를 확인하세요.")
-        cleanup()
-    print("✅ 프론트엔드 서버 준비 완료")
-    print()
+        with open("logs/frontend.log", "w", encoding="utf-8") as log:
+            frontend_proc = subprocess.Popen(
+                [get_npm_cmd(), "run", "tauri:dev"],
+                cwd=frontend_dir,
+                stdout=log,
+                stderr=log,
+                shell=IS_WINDOWS,
+            )
+        print(f"✅ Tauri 앱 시작됨 (PID: {frontend_proc.pid})")
+        print()
+
+        print("⏳ 프론트엔드 서버 준비 중... (Tauri가 내부적으로 dev 서버 실행)")
+        # Tauri의 beforeDevCommand(npm run dev)가 5173을 띄울 때까지 대기
+        if not wait_for_url("http://localhost:5173", max_tries=30):
+            print("❌ 프론트엔드/dev 서버 시작 실패. logs/frontend.log를 확인하세요.")
+            cleanup()
+        print("✅ 프론트엔드 서버 준비 완료")
+        print()
+    else:
+        # 웹 모드: 프론트엔드 dev 서버만 실행
+        print("🎨 프론트엔드 개발 서버 시작 중... (포트 5173)")
+
+        with open("logs/frontend.log", "w", encoding="utf-8") as log:
+            frontend_proc = subprocess.Popen(
+                [get_npm_cmd(), "run", "dev"],
+                cwd=frontend_dir,
+                stdout=log,
+                stderr=log,
+                shell=IS_WINDOWS,
+            )
+        print(f"✅ 프론트엔드 서버 시작됨 (PID: {frontend_proc.pid})")
+        print()
+
+        print("⏳ 프론트엔드 서버 준비 중...")
+        if not wait_for_url("http://localhost:5173", max_tries=15):
+            print("❌ 프론트엔드 서버 시작 실패. logs/frontend.log를 확인하세요.")
+            cleanup()
+        print("✅ 프론트엔드 서버 준비 완료")
+        print()
 
     # ── 6. 서버 정보 출력 ─────────────────────
     print("━" * 42)
@@ -273,7 +310,10 @@ def main():
     print()
     print("📡 백엔드 A2A 서버:  http://localhost:8001")
     print("🔌 AG-UI 게이트웨이: http://localhost:8000")
-    print("🌐 프론트엔드 UI:     http://localhost:5173")
+    if desktop_mode:
+        print("🖥️  Tauri 데스크톱 앱:   새 창에서 실행됩니다")
+    else:
+        print("🌐 프론트엔드 UI:     http://localhost:5173")
     print()
     print("📝 로그 위치:")
     print("   - 백엔드:    logs/backend.log")

@@ -115,6 +115,11 @@ travel-agui/
 │   │   └── store.py
 │   └── tests/
 ├── frontend/
+│   ├── src-tauri/          # Tauri 데스크톱 앱 설정
+│   │   ├── tauri.conf.json
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   └── ...
 └── openspec/
 ```
 
@@ -135,10 +140,11 @@ travel-agui/
 | uv | 최신 | [astral.sh/uv](https://astral.sh/uv) |
 | Node.js | 18+ | [nodejs.org](https://nodejs.org) |
 | Google Gemini API Key | - | [aistudio.google.com](https://aistudio.google.com) |
+| Rust + Cargo (데스크톱 전용) | 1.70+ | [rustup.rs](https://rustup.rs) |
 
 ---
 
-### 빠른 시작
+### 웹 모드로 실행
 
 ```bash
 # 1. 환경 변수 설정
@@ -156,6 +162,20 @@ cd frontend && npm install && cd ..
 # 5. 서버 시작
 python start.py
 ```
+
+### 데스크톱 앱(Tauri)으로 실행
+
+```bash
+# 추가 요구사항: Rust + Cargo (https://rustup.rs)
+
+# 1~4. 위와 동일하게 설정 후
+
+# 5. 데스크톱 앱 모드로 시작
+python start.py --desktop
+```
+
+`--desktop` 옵션을 사용하면 `npm run tauri:dev`를 실행하여 Tauri 윈도우로 앱이 구동됩니다.
+백엔드(A2A, Gateway)는 동일하게 실행되며, 프론트엔드만 브라우저 대신 Tauri 창에서 열립니다.
 
 기본 도메인:
 
@@ -183,9 +203,13 @@ uv run python a2a_server.py
 cd backend
 uv run python main.py
 
-# 터미널 3 — 프론트엔드
+# 터미널 3 — 프론트엔드 (웹)
 cd frontend
 npm run dev
+
+# 또는 터미널 3 — Tauri 데스크톱 앱
+cd frontend
+npm run tauri:dev
 ```
 
 서버 주소:
