@@ -325,3 +325,20 @@ lsof -ti :5173 | xargs kill -9
 
 즉, 앞으로 새 도메인을 붙일 때는 공통 채팅 흐름을 다시 만들지 않고,
 `backend/domains/<domain>/...` 쪽만 구현하면 됩니다.
+
+---
+
+## Graphify 통합
+
+이 프로젝트는 Graphify를 사용해 코드, 문서, 이미지 기반 지식 그래프를 생성할 수 있습니다.
+
+```bash
+./graphify.sh
+```
+
+- `graphify.sh`는 repo 루트에서 실행됩니다.
+- `graphify` CLI가 없으면 `pipx install graphifyy`를 시도합니다.
+- 출력은 `graphify-out/`에 생성됩니다.
+- 이후 변경이 발생하면 동일 명령으로 그래프를 갱신할 수 있습니다.
+
+> Graphify는 `--wiki`, `--svg`, `--graphml` 옵션을 사용하여 repo를 분석하고 탐색 가능한 출력물을 생성합니다.
