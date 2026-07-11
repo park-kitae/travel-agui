@@ -17,7 +17,8 @@ import {
 import { useAgentState } from './useAgentState'
 import { useChatMessages } from './useChatMessages'
 
-const AGUI_ENDPOINT = '/agui/run'
+const AGUI_BASE_URL = import.meta.env.VITE_AGUI_BASE_URL || ''
+const AGUI_ENDPOINT = `${AGUI_BASE_URL}/agui/run`
 
 function generateId() {
   return Math.random().toString(36).slice(2, 10)

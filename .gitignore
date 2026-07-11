@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+# .env.production 은 배포 서버 URL만 포함하므로 커밋 허용
 
 # ── Python ──────────────────────────────────────
 __pycache__/
@@ -14,6 +15,9 @@ backend/.venv/
 # ── Node / npm ───────────────────────────────────
 node_modules/
 frontend/dist/
+
+# ── Tauri / Rust ──────────────────────────────────
+frontend/src-tauri/target/
 
 # ── 에디터 / IDE ─────────────────────────────────
 .vscode
