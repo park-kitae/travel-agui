@@ -29,6 +29,7 @@ tests/screenshots/*.png
 tests/e2e/test-results/
 test-results/
 playwright-report/
+backend/evals/results/
 
 # ── 로그 ─────────────────────────────────────────
 logs/

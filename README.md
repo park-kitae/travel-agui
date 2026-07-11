@@ -252,6 +252,40 @@ npm run build
 npm test
 ```
 
+### DeepEval 기반 평가 런너
+
+백엔드에 standalone DeepEval 평가 스택을 추가했습니다. 평가 엔진은 A2A/HTTP 경로를 우회하고, ADK 에이전트를 직접 호출해 응답 품질을 점검합니다.
+
+#### 포함된 항목
+
+- `backend/evals/runner.py`: JSONL 골든 데이터 기반 평가 실행
+- `backend/evals/judge.py`: `GOOGLE_API_KEY` 기반 Gemini judge 팩토리
+- `backend/evals/runners/travel_agent_runner.py`: ADK 직접 호출 어댑터
+- `backend/evals/metrics/travel_metrics.py`: `travel_correctness` GEval
+- `backend/evals/datasets/travel_goldens.jsonl`: 샘플 평가 데이터셋
+- `backend/evals/tests/test_evals.py`: pytest 통합 테스트
+- `backend/evals/summary.py`: 최신 결과 JSON 요약 헬퍼
+
+#### 실행 방법
+
+```bash
+cd backend
+uv run python -m evals.runner --dataset evals/datasets/travel_goldens.jsonl --fail-under 0.8
+```
+
+실행 결과는 `backend/evals/results/` 아래 JSON 파일로 저장되며, 최신 결과는 다음으로 확인할 수 있습니다.
+
+```bash
+cd backend
+uv run python -m evals.summary
+```
+
+#### 참고
+
+- `GOOGLE_API_KEY`가 필요하며, `backend/.env` 또는 `backend/.env.example` 기준으로 설정합니다.
+- `JUDGE_MODEL_NAME`은 선택값으로, 기본값은 `gemini-2.5-flash`입니다.
+- `--fail-under`를 지정하면 평균 점수가 임계값보다 낮을 때 종료 코드가 실패로 처리됩니다.
+
 ---
 
 ## 이벤트 흐름 핵심

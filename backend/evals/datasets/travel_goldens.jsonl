@@ -1,0 +1,2 @@
+{"id": "hotel_missing_dates", "input": "서울에서 도쿄로 호텔 찾아줘", "expected_output": "체크인/체크아웃 날짜와 인원 수를 되묻는다", "tags": ["hotel", "missing_info"]}
+{"id": "flight_basic", "input": "서울에서 부산까지 항공편 추천해줘", "expected_output": "항공편 추천을 제안한다", "tags": ["flight"]}
